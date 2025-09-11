@@ -44,7 +44,7 @@
 
       <div class="row">
         <button id="btnGen" class="btn">Genera Verbale</button>
-        <button id="btnCopy" class="btn ghost" disabled>Copia</button>
+        <button id="btnCopy" class="btn ghost" disabled>Copia testo</button>
         <button id="btnDownload" class="btn secondary" disabled>Scarica .md</button>
       </div>
 
@@ -59,28 +59,33 @@
   (function(){
     "use strict";
     const $ = (s)=>document.querySelector(s);
-    const notes = $("#notes"), btnGen = $("#btnGen"), btnCopy = $("#btnCopy"),
-          btnDl = $("#btnDownload"), out = $("#out"), status = $("#status");
+    const notesEl = $("#notes");
+    const btnGen  = $("#btnGen");
+    const btnCopy = $("#btnCopy");
+    const btnDl   = $("#btnDownload");
+    const out     = $("#out");
+    const status  = $("#status");
 
-    // Usa /api del dominio corrente (funziona su Vercel/localhost)
+    // Endpoint: in prod usa /api/minutes sullo stesso dominio; in locale usa http://localhost:3000
     const BASE = (()=>{
       const isLocal = location.hostname==="localhost" || location.hostname==="127.0.0.1" || location.protocol==="file:";
       return isLocal ? "http://localhost:3000" : "";
     })();
     const MINUTES_URL = `${BASE}/api/minutes`;
 
-    function setStatus(msg, err=false){
-      status.className = "status " + (err? "err":"ok");
-      status.innerHTML = msg; status.style.display = "block";
+    function setStatus(msg, isErr=false){
+      status.className = "status " + (isErr? "err":"ok");
+      status.style.display = "block";
+      status.innerHTML = msg;
     }
     function downloadText(name, text){
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([text],{type:"text/markdown"}));
+      a.href = URL.createObjectURL(new Blob([text], {type:"text/markdown"}));
       a.download = name; document.body.appendChild(a); a.click(); a.remove();
     }
 
     btnGen.addEventListener("click", async ()=>{
-      const content = (notes.value||"").trim();
+      const content = (notesEl.value||"").trim();
       if (content.length < 10) return setStatus("Inserisci appunti sufficienti.", true);
 
       btnGen.disabled = true; btnCopy.disabled = true; btnDl.disabled = true;
@@ -98,7 +103,7 @@
         if(!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
 
         const minutes = data.minutes || data.text || "";
-        out.textContent = minutes || "// Nessun testo";
+        out.textContent = minutes || "// Nessun testo generato";
         setStatus("✅ Fatto!");
         btnCopy.disabled = !minutes; btnDl.disabled = !minutes;
       }catch(e){
