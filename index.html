@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Memo AI — Appunti → Verbale</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    :root{ --brand:#0d3b4f; --ink:#0f172a; --muted:#475569; --page:#f4f7fb; --ok:#0e9f6e; --err:#ef4444; --card:#fff; --ring:#93c5fd; --shadow:0 8px 24px rgba(2,6,23,.08) }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,Segoe UI,Arial,sans-serif;background:var(--page);color:var(--ink)}
+    .wrap{max-width:900px;margin:40px auto;padding:0 16px}
+    h1{display:flex;align-items:center;gap:10px;margin:0 0 14px}
+    h1 small{color:var(--muted);font-size:.9rem;font-weight:600}
+    .card{background:var(--card);border-radius:16px;box-shadow:var(--shadow);border:1px solid #e5e7eb}
+    .pad{padding:18px}
+    label{font-weight:700}
+    textarea{width:100%;min-height:220px;padding:12px;border-radius:12px;border:1px solid #cbd5e1;font:inherit}
+    textarea:focus{outline:none;box-shadow:0 0 0 3px var(--ring)}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
+    .btn{background:var(--brand);color:#fff;border:none;border-radius:12px;padding:10px 16px;font-weight:700;cursor:pointer}
+    .btn.secondary{background:#0b1b2a}
+    .btn.ghost{background:#fff;color:var(--brand);border:1px solid #cbd5e1}
+    .status{margin-top:12px;padding:10px 12px;border-radius:10px;font-size:.95rem}
+    .ok{background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0}
+    .err{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+    pre{margin:0;max-height:60vh;overflow:auto;background:#0b1220;color:#e6edf3;padding:14px;border-radius:12px;white-space:pre-wrap}
+    .spin{width:16px;height:16px;border:3px solid #93c5fd;border-top-color:transparent;border-radius:50%;display:inline-block;animation:rot 1s linear infinite;margin-right:8px}
+    @keyframes rot{to{transform:rotate(360deg)}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>📝 Memo AI <small>— Dagli appunti al verbale in un click</small></h1>
+
+    <div class="card pad">
+      <label for="notes">Incolla qui i tuoi appunti:</label>
+      <textarea id="notes" placeholder="- Data/ora: 12/09, 21:00
+- Presenti: Rossi, Bianchi, Verdi
+- ODG: preventivo facciata; riparto spese; varie
+- Decisioni: accettato preventivo A; riparto millesimi; prossimo incontro 30/09"></textarea>
+
+      <div class="row">
+        <button id="btnGen" class="btn">Genera Verbale</button>
+        <button id="btnCopy" class="btn ghost" disabled>Copia</button>
+        <button id="btnDownload" class="btn secondary" disabled>Scarica .md</button>
+      </div>
+
+      <div id="status" class="status" style="display:none"></div>
+
+      <h3>Verbale</h3>
+      <pre id="out">// In attesa...</pre>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    "use strict";
+    const $ = (s)=>document.querySelector(s);
+    const notes = $("#notes"), btnGen = $("#btnGen"), btnCopy = $("#btnCopy"),
+          btnDl = $("#btnDownload"), out = $("#out"), status = $("#status");
+
+    // Usa /api del dominio corrente (funziona su Vercel/localhost)
+    const BASE = (()=>{
+      const isLocal = location.hostname==="localhost" || location.hostname==="127.0.0.1" || location.protocol==="file:";
+      return isLocal ? "http://localhost:3000" : "";
+    })();
+    const MINUTES_URL = `${BASE}/api/minutes`;
+
+    function setStatus(msg, err=false){
+      status.className = "status " + (err? "err":"ok");
+      status.innerHTML = msg; status.style.display = "block";
+    }
+    function downloadText(name, text){
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([text],{type:"text/markdown"}));
+      a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    }
+
+    btnGen.addEventListener("click", async ()=>{
+      const content = (notes.value||"").trim();
+      if (content.length < 10) return setStatus("Inserisci appunti sufficienti.", true);
+
+      btnGen.disabled = true; btnCopy.disabled = true; btnDl.disabled = true;
+      setStatus('<span class="spin"></span>Genero il verbale...');
+      out.textContent = "// In lavorazione...";
+
+      try{
+        const r = await fetch(MINUTES_URL, {
+          method: "POST",
+          headers: { "Content-Type":"application/json" },
+          body: JSON.stringify({ notes: content })
+        });
+        const text = await r.text();
+        let data; try{ data = JSON.parse(text); } catch { data = { raw:text }; }
+        if(!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
+
+        const minutes = data.minutes || data.text || "";
+        out.textContent = minutes || "// Nessun testo";
+        setStatus("✅ Fatto!");
+        btnCopy.disabled = !minutes; btnDl.disabled = !minutes;
+      }catch(e){
+        console.error(e);
+        setStatus("❌ " + e.message, true);
+        out.textContent = "// Errore.";
+      }finally{
+        btnGen.disabled = false;
+      }
+    });
+
+    btnCopy.addEventListener("click", async ()=>{
+      await navigator.clipboard.writeText(out.textContent || "");
+      setStatus("📋 Copiato negli appunti");
+    });
+
+    btnDl.addEventListener("click", ()=>{
+      downloadText("verbale-memoai.md", out.textContent || "");
+    });
+  })();
+  </script>
+</body>
+</html>
