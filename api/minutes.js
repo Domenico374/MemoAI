@@ -1,38 +1,50 @@
 // api/minutes.js
 export default async function handler(req, res) {
+  // CORS per la tua pagina statica
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+  if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
+
   try {
-    // (Facoltativo) preflight CORS — utile se chiami l'API da origini diverse
-    if (req.method === "OPTIONS") {
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-      return res.status(200).end();
+    // 1) Leggi e valida il body (Node runtime Vercel non fa auto-parsing)
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const raw = Buffer.concat(chunks).toString("utf8");
+
+    let payload = {};
+    try {
+      payload = raw ? JSON.parse(raw) : {};
+    } catch (_) {
+      return res.status(400).json({ ok: false, error: "Body non valido (JSON)" });
     }
 
-    if (req.method !== "POST") {
-      res.setHeader("Allow", "POST");
-      return res.status(405).json({ ok: false, error: "Method not allowed" });
+    const notes = typeof payload.notes === "string" ? payload.notes.trim() : "";
+    if (!notes || notes.length < 5) {
+      return res.status(400).json({ ok: false, error: "Campo 'notes' mancante o troppo corto" });
     }
 
+    // 2) Verifica API key
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ ok: false, error: "OPENAI_API_KEY non configurata" });
     }
 
-    // ✅ LEGGI GLI APPUNTI DAL BODY
-    const { notes } = req.body || {};
-    if (typeof notes !== "string" || notes.trim().length < 10) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Appunti mancanti o troppo brevi (min 10 caratteri)" });
-    }
-
+    // 3) Costruisci il prompt
     const system =
-      "Sei un assistente che redige verbali chiari, sintetici e formali partendo da appunti. " +
-      "Restituisci SOLO il verbale in Markdown, con sezioni come Presenze, Ordine del Giorno, Discussione, Decisioni, Prossimi passi.";
+      "Sei un assistente che redige verbali chiari, sintetici e formali partendo da appunti.";
+    const user =
+      `Appunti:\n${notes}\n\n` +
+      "Genera un verbale formale in italiano, con punti, decisioni e prossimi passi.";
 
-    const user = `Appunti grezzi:\n${notes}\n\nTrasforma in un verbale formale e ben strutturato.`;
-
+    // 4) Chiamata OpenAI (chat completions v1)
     const r = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -46,22 +58,22 @@ export default async function handler(req, res) {
           { role: "user", content: user },
         ],
         temperature: 0.4,
-        max_tokens: 800,
+        max_tokens: 900,
       }),
     });
 
-    const data = await r.json();
+    const data = await r.json().catch(() => ({}));
 
     if (!r.ok) {
+      // Ritorna errori leggibili dal frontend
       const msg = data?.error?.message || `OpenAI error ${r.status}`;
-      return res.status(500).json({ ok: false, error: msg });
+      return res.status(500).json({ ok: false, error: msg, openai_status: r.status });
     }
 
-    const minutes =
-      data?.choices?.[0]?.message?.content?.trim?.() || "Nessun testo generato.";
+    const minutes = data?.choices?.[0]?.message?.content?.trim?.() || "";
     return res.status(200).json({ ok: true, minutes });
   } catch (err) {
     console.error("MemoAI minutes error:", err);
-    return res.status(500).json({ ok: false, error: err.message || "Errore interno" });
+    return res.status(500).json({ ok: false, error: err?.message || "Errore interno" });
   }
 }
