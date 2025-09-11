@@ -1,0 +1,11 @@
+{
+  "name": "memoai",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "openai": "^4.56.0"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}
