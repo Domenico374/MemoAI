@@ -66,12 +66,12 @@
     const out     = $("#out");
     const status  = $("#status");
 
-    // Endpoint: in prod usa /api/minutes sullo stesso dominio; in locale usa http://localhost:3000
-    const BASE = (()=>{
-      const isLocal = location.hostname==="localhost" || location.hostname==="127.0.0.1" || location.protocol==="file:";
-      return isLocal ? "http://localhost:3000" : "";
-    })();
-    const MINUTES_URL = `${BASE}/api/minutes`;
+    // Endpoint: corretto per locale e produzione
+    const PROD = "https://memo-ai.vercel.app";
+    const MINUTES_URL =
+      (location.protocol === "file:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")
+        ? `${PROD}/api/minutes`
+        : "/api/minutes";
 
     function setStatus(msg, isErr=false){
       status.className = "status " + (isErr? "err":"ok");
@@ -127,3 +127,4 @@
   </script>
 </body>
 </html>
+
