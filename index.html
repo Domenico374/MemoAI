@@ -4,248 +4,212 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Memo AI</title>
-
-  <!-- Tailwind (CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    body { background:#f5f7fb }
-  </style>
+  <style> body{background:#f5f7fb} </style>
 </head>
 <body class="text-slate-800">
-  <div class="max-w-3xl mx-auto p-6">
+  <div class="max-w-4xl mx-auto p-6">
     <header class="mb-6">
       <h1 class="text-3xl font-bold">Memo AI</h1>
-      <p class="text-sm text-slate-600">Dagli appunti al verbale in un click</p>
+      <p class="text-sm text-slate-600">Upload audio/testo → Trascrizione → Verbale</p>
     </header>
-
     <div id="root"></div>
   </div>
 
-  <!-- React & Babel (CDN) -->
+  <!-- React + Babel -->
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  <!-- App JSX -->
   <script type="text/babel">
-    const { useState } = React;
+    const {useState, useRef} = React;
+    const API = {
+      upload: "/api/upload",
+      whisper: "/api/whisper",
+      format: "/api/format",
+      cleanup: "/api/cleanup",
+    };
 
-    const API_URL = "/api/verbale"; // backend Vercel
-
-    // Fallback locale (se API non disponibile)
-    function generateLocalMinutes({ notes, date, attendees, subject, format }) {
-      const lines = notes.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      const bullets = lines.filter(l => /^[-–•]/.test(l)).map(l => l.replace(/^[-–•]\s?/, ""));
-      const decisions = lines.filter(l => /decision|delibera|approv|assegna/i.test(l));
-      const kpi = lines.filter(l => /\bKPI\b|obiettivo|target/i.test(l));
-      const next = lines.find(l => /(prossim|riunion|scadenza|deadline)/i.test(l)) || "";
-
-      const header = [
-        subject ? `**Oggetto:** ${subject}` : null,
-        date ? `**Data:** ${date}` : null,
-        attendees ? `**Partecipanti:** ${attendees}` : null,
-      ].filter(Boolean).join("\n");
-
-      const body = [
-        "### Sintesi",
-        bullets.length ? bullets.map(b => `- ${b}`).join("\n") : "- (nessun punto elenco)",
-        "",
-        "### Decisioni",
-        decisions.length ? decisions.map(d => `- ${d}`).join("\n") : "- (non specificate)",
-        "",
-        "### KPI / Azioni",
-        kpi.length ? kpi.map(k => `- ${k}`).join("\n") : "- (non specificati)",
-        "",
-        "### Prossimi passi",
-        next ? `- ${next}` : "- (non indicati)",
-      ].join("\n");
-
-      if (format === "markdown") {
-        return ["# Verbale Riunione", header, "", body].filter(Boolean).join("\n");
-      }
-      return [
-        "VERBALE RIUNIONE",
-        header.replaceAll("**", ""),
-        "",
-        body.replace(/^### /gm, "").replaceAll("**", "")
-      ].join("\n");
-    }
-
-    function MemoAI() {
+    function App() {
+      const [queue, setQueue] = useState([]); // [{id,name,type,status,transcript}]
       const [appunti, setAppunti] = useState("");
-      const [dataRiunione, setDataRiunione] = useState("");
-      const [partecipanti, setPartecipanti] = useState("");
-      const [oggetto, setOggetto] = useState("");
-      const [formatoVerbale, setFormatoVerbale] = useState("standard");
       const [verbale, setVerbale] = useState("");
       const [loading, setLoading] = useState(false);
-      const [success, setSuccess] = useState(false);
-      const [error, setError] = useState("");
+      const inputRef = useRef(null);
 
-      const generaVerbale = async () => {
-        setError("");
-        setSuccess(false);
+      const pickFiles = () => inputRef.current?.click();
 
-        if (!appunti.trim()) {
-          setError("Inserisci gli appunti prima di generare il verbale");
+      const onFiles = async (e) => {
+        const files = Array.from(e.target.files || []);
+        for (const f of files) {
+          await addFile(f);
+        }
+        e.target.value = "";
+      };
+
+      const addFile = async (file) => {
+        const ext = (file.name.split(".").pop() || "").toLowerCase();
+        const kind = ["txt","md"].includes(ext) ? "text"
+                   : ["mp3","m4a","wav","ogg","webm"].includes(ext) ? "audio"
+                   : "unknown";
+        if (kind === "unknown") { alert(`Formato non supportato: ${file.name}`); return; }
+
+        // Leggi come base64 per un upload semplice (niente multipart)
+        const dataURL = await new Promise((res, rej) => {
+          const fr = new FileReader();
+          fr.onload = () => res(fr.result);
+          fr.onerror = rej;
+          fr.readAsDataURL(file);
+        });
+
+        const uRes = await fetch(API.upload, {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ fileName: file.name, dataURL })
+        });
+        if (!uRes.ok) { alert("Upload fallito"); return; }
+
+        const { fileId } = await uRes.json();
+        setQueue(q => [...q, { id:fileId, name:file.name, type:kind, status:"caricato" }]);
+
+        if (kind === "text") {
+          const text = await file.text();
+          setAppunti(prev => (prev ? prev + "\n" + text : text));
+        }
+      };
+
+      const transcribe = async (item) => {
+        setQueue(q => q.map(x => x.id===item.id ? {...x, status:"trascrivo…"} : x));
+        const r = await fetch(API.whisper, {
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ fileId: item.id })
+        });
+        if (!r.ok) {
+          setQueue(q => q.map(x => x.id===item.id ? {...x, status:"errore trascrizione"} : x));
           return;
         }
-        setLoading(true);
+        const { text } = await r.json();
+        setQueue(q => q.map(x => x.id===item.id ? {...x, status:"trascritto", transcript:text} : x));
+        setAppunti(prev => prev + `\n---\n[Trascrizione ${item.name}]\n` + (text || ""));
+      };
 
+      const cleanupFile = async (item) => {
+        await fetch(API.cleanup, {
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ fileId:item.id })
+        });
+        setQueue(q => q.filter(x => x.id!==item.id));
+      };
+
+      const generaVerbale = async () => {
+        if (!appunti.trim()) { alert("Inserisci o trascrivi degli appunti"); return; }
+        setLoading(true);
         try {
-          const res = await fetch(API_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
+          const r = await fetch(API.format, {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
             body: JSON.stringify({
               notes: appunti,
-              metadati: { dataRiunione, partecipanti, oggetto, formatoVerbale }
+              metadati: {} // opzionale: data/partecipanti/oggetto
             })
           });
-
-          if (!res.ok) {
-            throw new Error((await res.json().catch(() => ({}))).message || `Errore API (${res.status})`);
-          }
-
-          const data = await res.json();
+          const data = await r.json();
+          if (!r.ok) throw new Error(data.message||"Errore formattazione");
           setVerbale(data.verbale || "");
-          setSuccess(true);
         } catch (e) {
-          // fallback locale
-          const local = generateLocalMinutes({
-            notes: appunti,
-            date: dataRiunione,
-            attendees: partecipanti,
-            subject: oggetto,
-            format: formatoVerbale,
-          });
-          setVerbale(local);
-          setSuccess(true);
-        } finally {
-          setLoading(false);
-          setTimeout(() => {
-            document.getElementById("verbale-section")?.scrollIntoView({ behavior: "smooth" });
-          }, 80);
-        }
+          alert(e.message);
+        } finally { setLoading(false); }
       };
 
-      const copiaTesto = async () => {
+      const copia = async () => {
         if (!verbale) return;
-        try {
-          await navigator.clipboard.writeText(verbale);
-          alert("Copiato!");
-        } catch {
-          alert("Impossibile copiare il testo");
-        }
+        await navigator.clipboard.writeText(verbale);
+        alert("Copiato!");
       };
 
-      const scaricaMD = () => {
+      const scarica = () => {
         if (!verbale) return;
-        try {
-          const blob = new Blob([verbale], { type: "text/markdown;charset=utf-8" });
-          const a = document.createElement("a");
-          a.href = URL.createObjectURL(blob);
-          a.download = `verbale_${new Date().toISOString().split("T")[0]}.md`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(a.href);
-        } catch {
-          alert("Impossibile scaricare il file");
-        }
-      };
-
-      const resetForm = () => {
-        setAppunti(""); setVerbale(""); setError(""); setSuccess(false);
-        setDataRiunione(""); setPartecipanti(""); setOggetto("");
-        setFormatoVerbale("standard");
+        const a=document.createElement("a");
+        a.href=URL.createObjectURL(new Blob([verbale],{type:"text/markdown;charset=utf-8"}));
+        a.download=`verbale_${new Date().toISOString().split("T")[0]}.md`;
+        a.click();
+        URL.revokeObjectURL(a.href);
       };
 
       return (
         <div className="space-y-8">
-          {/* Sezione input */}
+          {/* Upload */}
           <section className="bg-white rounded-2xl shadow p-5">
-            <h2 className="text-lg font-semibold mb-4">Incolla qui i tuoi appunti:</h2>
-
-            {/* Opzioni avanzate */}
-            <details className="mb-4">
-              <summary className="cursor-pointer text-sm text-blue-700">Opzioni avanzate</summary>
-              <div className="mt-3 grid sm:grid-cols-2 gap-4">
-                <label className="block text-sm">
-                  <span className="text-slate-600">Data Riunione</span>
-                  <input type="text" value={dataRiunione}
-                         onChange={(e)=>setDataRiunione(e.target.value)}
-                         placeholder="gg/mm/aaaa"
-                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
-                </label>
-
-                <label className="block text-sm">
-                  <span className="text-slate-600">Partecipanti</span>
-                  <input type="text" value={partecipanti}
-                         onChange={(e)=>setPartecipanti(e.target.value)}
-                         placeholder="Mario Rossi, Anna Verdi…"
-                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
-                </label>
-
-                <label className="block text-sm sm:col-span-2">
-                  <span className="text-slate-600">Oggetto della riunione</span>
-                  <input type="text" value={oggetto}
-                         onChange={(e)=>setOggetto(e.target.value)}
-                         placeholder="Assemblea condominiale, Meeting team…"
-                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
-                </label>
-
-                <label className="block text-sm">
-                  <span className="text-slate-600">Formato verbale</span>
-                  <select value={formatoVerbale}
-                          onChange={(e)=>setFormatoVerbale(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="standard">Standard</option>
-                    <option value="markdown">Markdown</option>
-                  </select>
-                </label>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Upload file</h2>
+              <div>
+                <input ref={inputRef} type="file" multiple className="hidden"
+                       accept=".txt,.md,.mp3,.m4a,.wav,.ogg,.webm" onChange={onFiles}/>
+                <button onClick={pickFiles} className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm">
+                  Seleziona file
+                </button>
               </div>
-            </details>
+            </div>
 
-            <textarea
-              value={appunti}
-              onChange={(e)=>setAppunti(e.target.value)}
-              rows="8"
-              className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="- Discussione: preventivo, differenza su materiali e tempi…"></textarea>
+            {/* Coda */}
+            <ul className="mt-4 space-y-2">
+              {queue.map(item=>(
+                <li key={item.id} className="flex items-center justify-between border rounded-lg px-3 py-2">
+                  <div className="text-sm">
+                    <div className="font-medium">{item.name}</div>
+                    <div className="text-slate-500">{item.type} · {item.status}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    {item.type==="audio" && (
+                      <button onClick={()=>transcribe(item)} className="px-3 py-1 rounded bg-blue-600 text-white text-sm">
+                        Trascrivi
+                      </button>
+                    )}
+                    <button onClick={()=>cleanupFile(item)} className="px-3 py-1 rounded bg-slate-100 text-sm hover:bg-slate-200">
+                      Rimuovi
+                    </button>
+                  </div>
+                </li>
+              ))}
+              {queue.length===0 && <li className="text-sm text-slate-500">Nessun file in coda.</li>}
+            </ul>
+          </section>
 
-            <div className="mt-4 flex gap-3">
-              <button onClick={generaVerbale}
-                      disabled={loading}
+          {/* Appunti */}
+          <section className="bg-white rounded-2xl shadow p-5">
+            <h2 className="text-lg font-semibold mb-2">Appunti (testo e trascrizioni)</h2>
+            <textarea rows="8" value={appunti} onChange={e=>setAppunti(e.target.value)}
+                      className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Incolla note o usa la trascrizione audio..."></textarea>
+            <div className="mt-3">
+              <button onClick={generaVerbale} disabled={loading}
                       className="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60">
                 {loading ? "Genero…" : "Genera verbale"}
               </button>
-              <button onClick={resetForm} className="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300">Reset</button>
             </div>
-
-            {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-            {success && <p className="mt-3 text-sm text-green-600">Verbale generato con successo.</p>}
           </section>
 
-          {/* Risultato */}
-          <section id="verbale-section" className="bg-white rounded-2xl shadow p-5">
-            <div className="flex items-center justify-between mb-3">
+          {/* Verbale */}
+          <section className="bg-white rounded-2xl shadow p-5">
+            <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold">Verbale</h2>
               <div className="flex gap-2">
-                <button onClick={copiaTesto} disabled={!verbale} className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-50">Copia</button>
-                <button onClick={scaricaMD} disabled={!verbale} className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-50">Scarica .md</button>
+                <button onClick={copia} disabled={!verbale} className="px-3 py-2 rounded bg-slate-100 text-sm">Copia</button>
+                <button onClick={scarica} disabled={!verbale} className="px-3 py-2 rounded bg-slate-100 text-sm">Scarica .md</button>
               </div>
             </div>
-            <pre className="whitespace-pre-wrap text-sm leading-6 text-slate-800">
-{verbale || "Il verbale comparirà qui…"}
-            </pre>
+            <pre className="mt-3 whitespace-pre-wrap text-sm leading-6">{verbale || "—"}</pre>
           </section>
         </div>
       );
     }
 
     const root = ReactDOM.createRoot(document.getElementById("root"));
-    root.render(<MemoAI />);
+    root.render(<App/>);
   </script>
 </body>
 </html>
 
+        
