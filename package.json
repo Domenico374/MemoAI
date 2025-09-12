@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "dependencies": {
-    "openai": "^4.56.0"
-  },
   "scripts": {
     "dev": "vercel dev"
+  },
+  "dependencies": {
+    "openai": "^4.56.0"
   },
   "engines": {
     "node": "20.x || 22.x"
