@@ -11,7 +11,7 @@
   <div class="max-w-4xl mx-auto p-6">
     <header class="mb-6">
       <h1 class="text-3xl font-bold">Memo AI</h1>
-      <p class="text-sm text-slate-600">Upload file → Trascrizione / Estrazione → Verbale</p>
+      <p class="text-sm text-slate-600">Upload file → Trascrizione / Estrazione → Formattazione</p>
     </header>
     <div id="root"></div>
   </div>
@@ -25,13 +25,15 @@
     const { useState, useRef, useEffect } = React;
 
     const API = {
-      extract: "/api/extract",
-      whisper: "/api/whisper",
-      format:  "/api/format",
+      extract: "/api/extract",   // DOCX/PDF/TXT/MD → testo
+      whisper: "/api/whisper",   // audio → trascrizione
+      format:  "/api/format",    // formatting: minutes/summary/clean/none
     };
 
+    const MAX_CLIENT_BYTES = 4.2 * 1024 * 1024; // ~4.2MB per stare sotto 4.5MB Vercel body limit
+
     function App() {
-      const [queue, setQueue]   = useState([]);   // [{id,name,type,status,dataURL}]
+      const [queue, setQueue]   = useState([]);   // [{id,name,type,status,dataURL,size,mime}]
       const [appunti, setAppunti] = useState("");
       const [verbale, setVerbale] = useState("");
       const [loading, setLoading] = useState(false);
@@ -50,27 +52,37 @@
         e.target.value = "";
       };
 
+      const sniffKind = (ext) => {
+        if (["txt","md"].includes(ext)) return "text";
+        if (["docx","pdf"].includes(ext)) return "doc";
+        if (["mp3","m4a","wav","ogg","webm"].includes(ext)) return "audio";
+        return "unknown";
+      };
+
       // === caricamento file ===
       const addFile = async (file) => {
         const ext = (file.name.split(".").pop() || "").toLowerCase();
-        const kind =
-          ["txt","md"].includes(ext) ? "text" :
-          ["docx","pdf"].includes(ext) ? "doc" :
-          ["mp3","m4a","wav","ogg","webm"].includes(ext) ? "audio" :
-          "unknown";
+        const kind = sniffKind(ext);
 
+        if (file.size > MAX_CLIENT_BYTES) {
+          alert(`"${file.name}" è troppo grande (${(file.size/1024/1024).toFixed(1)} MB). Limite upload: 4.5 MB su Vercel.`);
+          return;
+        }
         if (kind === "unknown") { alert(`Formato non supportato: ${file.name}`); return; }
 
-        // leggi sempre il file come dataURL e conservalo in coda
+        // leggi sempre come dataURL
         const dataURL = await new Promise((resolve, reject) => {
           const fr = new FileReader();
           fr.onload = () => resolve(fr.result);
           fr.onerror = reject;
           fr.readAsDataURL(file);
         });
+        const m = /^data:([^;]+);base64,/.exec(dataURL) || [];
+        const mime = m[1] || "";
 
         const fileId = crypto.randomUUID();
-        setQueue(q => [...q, { id:fileId, name:file.name, type:kind, status:"caricato", dataURL }]);
+        const baseItem = { id:fileId, name:file.name, type:kind, status:"caricato", dataURL, size:file.size, mime };
+        setQueue(q => [...q, baseItem]);
 
         if (kind === "text") {
           const text = await file.text();
@@ -80,24 +92,26 @@
         }
 
         if (kind === "doc") {
+          setQueue(q => q.map(i => i.id===fileId ? ({...i, status:"estraggo…"}) : i));
           const ex = await fetch(API.extract, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ fileId, dataURL })
+            body: JSON.stringify({ fileId, fileName: file.name, dataURL })
           });
-          let msg = "Errore estrazione testo";
-          try {
-            const data = await ex.json();
-            if (!ex.ok) {
-              alert(data.message || msg);
-              setQueue(q => q.map(i => i.id===fileId ? ({...i, status:"errore estrazione"}) : i));
-            } else {
-              const header = `\n---\n[Estratto ${file.name}]\n`;
-              setAppunti(prev => (prev ? prev + header + data.text : data.text));
-              setQueue(q => q.map(i => i.id===fileId ? ({...i, status:"estratto"}) : i));
-            }
-          } catch { alert(msg); }
+          let data = {};
+          try { data = await ex.json(); } catch {}
+          if (!ex.ok) {
+            const detail = data?.detail || data?.message || "Errore estrazione testo";
+            setQueue(q => q.map(i => i.id===fileId ? ({...i, status:`errore: ${detail}`}) : i));
+            console.error("extract error:", data);
+            return;
+          }
+          const header = `\n---\n[Estratto ${file.name}]\n`;
+          setAppunti(prev => (prev ? prev + header + (data.text||"") : (data.text||"")));
+          setQueue(q => q.map(i => i.id===fileId ? ({...i, status:"estratto"}) : i));
         }
+
+        // audio rimane “caricato”: l’utente preme Trascrivi
       };
 
       // === trascrizione audio ===
@@ -106,12 +120,14 @@
         const r = await fetch(API.whisper, {
           method:"POST",
           headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ dataURL: item.dataURL })
+          body: JSON.stringify({ dataURL: item.dataURL, fileName: item.name })
         });
-        const data = await r.json().catch(()=> ({}));
+        let data = {};
+        try { data = await r.json(); } catch {}
         if (!r.ok) {
-          alert(data.message || "Errore trascrizione");
-          setQueue(q => q.map(x => x.id===item.id ? ({...x, status:"errore trascrizione"}) : x));
+          const detail = data?.detail || data?.message || "Errore trascrizione";
+          setQueue(q => q.map(x => x.id===item.id ? ({...x, status:`errore: ${detail}`}) : x));
+          console.error("whisper error:", data);
           return;
         }
         setQueue(q => q.map(x => x.id===item.id ? ({...x, status:"trascritto"}) : x));
@@ -186,7 +202,11 @@
                   <div className="flex justify-between items-center">
                     <div className="text-sm">
                       <div className="font-medium">{item.name}</div>
-                      <div className="text-slate-500">{item.type} · {item.status}</div>
+                      <div className="text-slate-500">
+                        {item.type} · {item.status}
+                        {item.size != null && <> · {(item.size/1024).toFixed(1)} KB</>}
+                        {item.mime && <> · {item.mime}</>}
+                      </div>
                     </div>
                     <div className="flex gap-2">
                       {item.type === "audio" && (
@@ -205,6 +225,10 @@
               ))}
               {queue.length === 0 && <li className="text-sm text-slate-500">Nessun file in coda.</li>}
             </ul>
+
+            <p className="mt-2 text-xs text-slate-500">
+              Suggerimento: per file &gt; 4.5 MB usa versioni ridotte. I PDF scansionati richiederanno OCR.
+            </p>
           </section>
 
           {/* Appunti */}
