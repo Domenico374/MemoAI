@@ -32,7 +32,7 @@
     };
 
     function App() {
-      const [queue, setQueue] = useState([]); // [{id,name,type,status}]
+      const [queue, setQueue] = useState([]);
       const [appunti, setAppunti] = useState("");
       const [verbale, setVerbale] = useState("");
       const [loading, setLoading] = useState(false);
@@ -59,7 +59,6 @@
           return;
         }
 
-        // Upload file come dataURL
         const dataURL = await new Promise((res, rej) => {
           const fr = new FileReader();
           fr.onload = () => res(fr.result);
@@ -77,7 +76,6 @@
         const { fileId } = await uRes.json();
         setQueue(q => [...q, { id:fileId, name:file.name, type:kind, status:"caricato" }]);
 
-        // Gestione immediata per text/doc
         if (kind === "text") {
           const text = await file.text();
           setAppunti(prev => (prev ? prev + "\n" + text : text));
@@ -87,13 +85,13 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ fileId })
           });
+          const data = await x.json().catch(()=>({}));
           if (!x.ok) {
-            const data = await x.json().catch(()=>({}));
             alert(data.message || "Errore estrazione testo");
+            setQueue(q => q.map(item => item.id===fileId ? {...item, status:"errore estrazione"} : item));
           } else {
-            const { text } = await x.json();
             const header = `\n---\n[Estratto ${file.name}]\n`;
-            setAppunti(prev => (prev ? prev + header + text : text));
+            setAppunti(prev => (prev ? prev + header + data.text : data.text));
             setQueue(q => q.map(item => item.id===fileId ? {...item, status:"estratto"} : item));
           }
         }
@@ -106,13 +104,14 @@
           headers:{"Content-Type":"application/json"},
           body: JSON.stringify({ fileId: item.id })
         });
+        const data = await r.json().catch(()=>({}));
         if (!r.ok) {
+          alert(data.message || "Errore trascrizione");
           setQueue(q => q.map(x => x.id===item.id ? {...x, status:"errore trascrizione"} : x));
           return;
         }
-        const { text } = await r.json();
         setQueue(q => q.map(x => x.id===item.id ? {...x, status:"trascritto"} : x));
-        setAppunti(prev => prev + `\n---\n[Trascrizione ${item.name}]\n` + (text || ""));
+        setAppunti(prev => prev + `\n---\n[Trascrizione ${item.name}]\n` + (data.text || ""));
       };
 
       const cleanupFile = async (item) => {
@@ -156,6 +155,12 @@
         URL.revokeObjectURL(a.href);
       };
 
+      const resetAll = () => {
+        setQueue([]);
+        setAppunti("");
+        setVerbale("");
+      };
+
       return (
         <div className="space-y-8">
           {/* Upload */}
@@ -175,65 +180,27 @@
 
             <ul className="mt-4 space-y-2">
               {queue.map(item=>(
-                <li key={item.id} className="flex items-center justify-between border rounded-lg px-3 py-2">
-                  <div className="text-sm">
-                    <div className="font-medium">{item.name}</div>
-                    <div className="text-slate-500">{item.type} · {item.status}</div>
-                  </div>
-                  <div className="flex gap-2">
-                    {item.type==="audio" && (
-                      <button onClick={()=>transcribe(item)}
-                        className="px-3 py-1 rounded bg-blue-600 text-white text-sm">
-                        Trascrivi
+                <li key={item.id} className="border rounded-lg px-3 py-2">
+                  <div className="flex justify-between items-center">
+                    <div className="text-sm">
+                      <div className="font-medium">{item.name}</div>
+                      <div className="text-slate-500">{item.type} · {item.status}</div>
+                      {item.status === "errore estrazione" && (
+                        <div className="text-red-500 text-xs mt-1">⚠️ Estrazione fallita. PDF non testuale?</div>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      {item.type==="audio" && (
+                        <button onClick={()=>transcribe(item)}
+                          className="px-3 py-1 rounded bg-blue-600 text-white text-sm">
+                          Trascrivi
+                        </button>
+                      )}
+                      <button onClick={()=>cleanupFile(item)}
+                        className="px-3 py-1 rounded bg-slate-100 text-sm hover:bg-slate-200">
+                        Rimuovi
                       </button>
-                    )}
-                    <button onClick={()=>cleanupFile(item)}
-                      className="px-3 py-1 rounded bg-slate-100 text-sm hover:bg-slate-200">
-                      Rimuovi
-                    </button>
+                    </div>
                   </div>
-                </li>
-              ))}
-              {queue.length===0 && <li className="text-sm text-slate-500">Nessun file in coda.</li>}
-            </ul>
-          </section>
-
-          {/* Appunti */}
-          <section className="bg-white rounded-2xl shadow p-5">
-            <h2 className="text-lg font-semibold mb-2">Appunti</h2>
-            <textarea rows="8" value={appunti} onChange={e=>setAppunti(e.target.value)}
-              className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Incolla note o usa la trascrizione/estrazione file..."></textarea>
-            <div className="mt-3">
-              <button onClick={generaVerbale} disabled={loading}
-                className="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60">
-                {loading ? "Genero…" : "Genera verbale"}
-              </button>
-            </div>
-          </section>
-
-          {/* Verbale */}
-          <section className="bg-white rounded-2xl shadow p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Verbale</h2>
-              <div className="flex gap-2">
-                <button onClick={copia} disabled={!verbale}
-                  className="px-3 py-2 rounded bg-slate-100 text-sm">Copia</button>
-                <button onClick={scarica} disabled={!verbale}
-                  className="px-3 py-2 rounded bg-slate-100 text-sm">Scarica .md</button>
-              </div>
-            </div>
-            <pre className="mt-3 whitespace-pre-wrap text-sm leading-6">{verbale || "—"}</pre>
-          </section>
-        </div>
-      );
-    }
-
-    const root = ReactDOM.createRoot(document.getElementById("root"));
-    root.render(<App/>);
-  </script>
-</body>
-</html>
-
-
-       
+                  {item.type==="audio" && (
+                    <audio controls src={`/tmp/${
