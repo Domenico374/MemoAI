@@ -5,7 +5,10 @@ import mammoth from "mammoth";
 import pdfParse from "pdf-parse";
 
 function normalizeText(s = "") {
-  return String(s).replace(/\u0000/g, "").replace(/\n{3,}/g, "\n\n").trim();
+  return String(s)
+    .replace(/\u0000/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 export default async function handler(req, res) {
@@ -34,9 +37,17 @@ export default async function handler(req, res) {
       try {
         const result = await pdfParse(buf);
         text = result.text || "";
+
+        // Controllo aggiuntivo per PDF vuoti o scannerizzati
+        if (!text || text.trim().length < 50) {
+          return res.status(415).json({
+            message: "PDF caricato non contiene testo estraibile. Potrebbe essere una scansione. Serve OCR."
+          });
+        }
       } catch (err) {
+        console.error("Errore PDF parse:", { fileId, ext, error: err });
         return res.status(415).json({
-          message: "PDF non testuale (probabilmente scannerizzato). Serve OCR."
+          message: "Errore nell'estrazione del PDF. Potrebbe essere una scansione. Serve OCR."
         });
       }
     } else if (ext === "txt" || ext === "md") {
@@ -48,7 +59,7 @@ export default async function handler(req, res) {
     text = normalizeText(text);
     return res.status(200).json({ ok: true, text });
   } catch (e) {
-    console.error("extract error:", e);
+    console.error("Errore generale estrazione:", { fileId: req.body?.fileId, error: e });
     return res.status(500).json({ message: "Errore estrazione testo" });
   }
 }
