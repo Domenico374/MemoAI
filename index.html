@@ -26,9 +26,50 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  <!-- La tua app in JSX: usare type="text/babel" è ESSENZIALE -->
+  <!-- App JSX -->
   <script type="text/babel">
     const { useState } = React;
+
+    const API_URL = "/api/verbale"; // backend Vercel
+
+    // Fallback locale (se API non disponibile)
+    function generateLocalMinutes({ notes, date, attendees, subject, format }) {
+      const lines = notes.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const bullets = lines.filter(l => /^[-–•]/.test(l)).map(l => l.replace(/^[-–•]\s?/, ""));
+      const decisions = lines.filter(l => /decision|delibera|approv|assegna/i.test(l));
+      const kpi = lines.filter(l => /\bKPI\b|obiettivo|target/i.test(l));
+      const next = lines.find(l => /(prossim|riunion|scadenza|deadline)/i.test(l)) || "";
+
+      const header = [
+        subject ? `**Oggetto:** ${subject}` : null,
+        date ? `**Data:** ${date}` : null,
+        attendees ? `**Partecipanti:** ${attendees}` : null,
+      ].filter(Boolean).join("\n");
+
+      const body = [
+        "### Sintesi",
+        bullets.length ? bullets.map(b => `- ${b}`).join("\n") : "- (nessun punto elenco)",
+        "",
+        "### Decisioni",
+        decisions.length ? decisions.map(d => `- ${d}`).join("\n") : "- (non specificate)",
+        "",
+        "### KPI / Azioni",
+        kpi.length ? kpi.map(k => `- ${k}`).join("\n") : "- (non specificati)",
+        "",
+        "### Prossimi passi",
+        next ? `- ${next}` : "- (non indicati)",
+      ].join("\n");
+
+      if (format === "markdown") {
+        return ["# Verbale Riunione", header, "", body].filter(Boolean).join("\n");
+      }
+      return [
+        "VERBALE RIUNIONE",
+        header.replaceAll("**", ""),
+        "",
+        body.replace(/^### /gm, "").replaceAll("**", "")
+      ].join("\n");
+    }
 
     function MemoAI() {
       const [appunti, setAppunti] = useState("");
@@ -52,8 +93,7 @@
         setLoading(true);
 
         try {
-          // 👉 Modifica l’endpoint se usi una tua API
-          const res = await fetch("/api/verbale", {
+          const res = await fetch(API_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -63,26 +103,33 @@
           });
 
           if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data.message || "Errore nella generazione del verbale");
+            throw new Error((await res.json().catch(() => ({}))).message || `Errore API (${res.status})`);
           }
 
           const data = await res.json();
           setVerbale(data.verbale || "");
           setSuccess(true);
-
-          // scroll al risultato
-          setTimeout(() => {
-            document.getElementById("verbale-section")?.scrollIntoView({ behavior: "smooth" });
-          }, 100);
         } catch (e) {
-          setError(e.message || "Errore sconosciuto");
+          // fallback locale
+          const local = generateLocalMinutes({
+            notes: appunti,
+            date: dataRiunione,
+            attendees: partecipanti,
+            subject: oggetto,
+            format: formatoVerbale,
+          });
+          setVerbale(local);
+          setSuccess(true);
         } finally {
           setLoading(false);
+          setTimeout(() => {
+            document.getElementById("verbale-section")?.scrollIntoView({ behavior: "smooth" });
+          }, 80);
         }
       };
 
       const copiaTesto = async () => {
+        if (!verbale) return;
         try {
           await navigator.clipboard.writeText(verbale);
           alert("Copiato!");
@@ -92,6 +139,7 @@
       };
 
       const scaricaMD = () => {
+        if (!verbale) return;
         try {
           const blob = new Blob([verbale], { type: "text/markdown;charset=utf-8" });
           const a = document.createElement("a");
@@ -107,13 +155,8 @@
       };
 
       const resetForm = () => {
-        setAppunti("");
-        setVerbale("");
-        setError("");
-        setSuccess(false);
-        setDataRiunione("");
-        setPartecipanti("");
-        setOggetto("");
+        setAppunti(""); setVerbale(""); setError(""); setSuccess(false);
+        setDataRiunione(""); setPartecipanti(""); setOggetto("");
         setFormatoVerbale("standard");
       };
 
@@ -188,8 +231,8 @@
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-semibold">Verbale</h2>
               <div className="flex gap-2">
-                <button onClick={copiaTesto} className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200">Copia</button>
-                <button onClick={scaricaMD} className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200">Scarica .md</button>
+                <button onClick={copiaTesto} disabled={!verbale} className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-50">Copia</button>
+                <button onClick={scaricaMD} disabled={!verbale} className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-50">Scarica .md</button>
               </div>
             </div>
             <pre className="whitespace-pre-wrap text-sm leading-6 text-slate-800">
@@ -205,4 +248,4 @@
   </script>
 </body>
 </html>
-        
+
