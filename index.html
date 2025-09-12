@@ -25,19 +25,19 @@
     const { useState, useRef } = React;
 
     const API = {
-      upload:  "/api/upload",
-      extract: "/api/extract",
-      whisper: "/api/whisper",
+      upload:  "/api/upload",   // rimane per creare un id “di cortesia” visuale
+      extract: "/api/extract",  // ora consuma anche dataURL
+      whisper: "/api/whisper",  // ora consuma dataURL
       format:  "/api/format",
       cleanup: "/api/cleanup",
     };
 
     function App() {
-      const [queue, setQueue] = useState([]);
+      const [queue, setQueue]   = useState([]);   // [{id,name,type,status,dataURL}]
       const [appunti, setAppunti] = useState("");
       const [verbale, setVerbale] = useState("");
       const [loading, setLoading] = useState(false);
-      const [mode, setMode] = useState("minutes"); // default
+      const [mode, setMode] = useState("minutes"); // minutes | summary | clean | none
       const inputRef = useRef(null);
 
       const pickFiles = () => inputRef.current?.click();
@@ -48,6 +48,7 @@
         e.target.value = "";
       };
 
+      // === caricamento file ===
       const addFile = async (file) => {
         const ext = (file.name.split(".").pop() || "").toLowerCase();
         const kind =
@@ -58,6 +59,7 @@
 
         if (kind === "unknown") { alert(`Formato non supportato: ${file.name}`); return; }
 
+        // 1) leggi sempre il file come dataURL e conservalo in coda
         const dataURL = await new Promise((resolve, reject) => {
           const fr = new FileReader();
           fr.onload = () => resolve(fr.result);
@@ -65,78 +67,86 @@
           fr.readAsDataURL(file);
         });
 
-        const up = await fetch(API.upload, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fileName: file.name, dataURL })
-        });
+        // 2) upload “di cortesia” per avere un id (non usiamo più /tmp per elaborare)
+        let fileId = crypto.randomUUID();
+        try {
+          const up = await fetch(API.upload, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fileName: file.name, dataURL })
+          });
+          if (up.ok) {
+            const j = await up.json().catch(()=> ({}));
+            if (j?.fileId) fileId = j.fileId;
+          }
+        } catch {}
 
-        if (!up.ok) { alert("Upload fallito"); return; }
+        // 3) metti in coda includendo il dataURL
+        setQueue(q => [...q, { id:fileId, name:file.name, type:kind, status:"caricato", dataURL }]);
 
-        const { fileId } = await up.json();
-        setQueue(q => [...q, { id:fileId, name:file.name, type:kind, status:"caricato" }]);
-
+        // 4) se è testo locale lo appendiamo subito
         if (kind === "text") {
           const text = await file.text();
           setAppunti(prev => (prev ? prev + "\n" + text : text));
-          setQueue(q => q.map(i => i.id===fileId ? {...i, status:"aggiunto"} : i));
+          setQueue(q => q.map(i => i.id===fileId ? ({...i, status:"aggiunto"}) : i));
           return;
         }
 
+        // 5) se è DOCX/PDF avvia estrazione passando ANCHE dataURL
         if (kind === "doc") {
           const ex = await fetch(API.extract, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ fileId })
+            body: JSON.stringify({ fileId, dataURL }) // <<<<<< fondamentale
           });
           let msg = "Errore estrazione testo";
           try {
             const data = await ex.json();
             if (!ex.ok) {
               alert(data.message || msg);
-              setQueue(q => q.map(i => i.id===fileId ? {...i, status:"errore estrazione"} : i));
+              setQueue(q => q.map(i => i.id===fileId ? ({...i, status:"errore estrazione"}) : i));
             } else {
               const header = `\n---\n[Estratto ${file.name}]\n`;
               setAppunti(prev => (prev ? prev + header + data.text : data.text));
-              setQueue(q => q.map(i => i.id===fileId ? {...i, status:"estratto"} : i));
+              setQueue(q => q.map(i => i.id===fileId ? ({...i, status:"estratto"}) : i));
             }
           } catch { alert(msg); }
-          return;
         }
       };
 
+      // === trascrizione audio (usa SEMPRE dataURL dalla coda) ===
       const transcribe = async (item) => {
-        setQueue(q => q.map(x => x.id===item.id ? {...x, status:"trascrivo…"} : x));
+        setQueue(q => q.map(x => x.id===item.id ? ({...x, status:"trascrivo…"}) : x));
         const r = await fetch(API.whisper, {
           method:"POST",
           headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ fileId: item.id })
+          body: JSON.stringify({ dataURL: item.dataURL }) // <<<<<< fondamentale
         });
-        const data = await r.json().catch(()=>({}));
+        const data = await r.json().catch(()=> ({}));
         if (!r.ok) {
           alert(data.message || "Errore trascrizione");
-          setQueue(q => q.map(x => x.id===item.id ? {...x, status:"errore trascrizione"} : x));
+          setQueue(q => q.map(x => x.id===item.id ? ({...x, status:"errore trascrizione"}) : x));
           return;
         }
-        setQueue(q => q.map(x => x.id===item.id ? {...x, status:"trascritto"} : x));
+        setQueue(q => q.map(x => x.id===item.id ? ({...x, status:"trascritto"}) : x));
         setAppunti(prev => prev + `\n---\n[Trascrizione ${item.name}]\n` + (data.text || ""));
       };
 
       const cleanupFile = async (item) => {
-        await fetch(API.cleanup, {
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ fileId:item.id })
-        });
+        try {
+          await fetch(API.cleanup, {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({ fileId:item.id })
+          });
+        } catch {}
         setQueue(q => q.filter(x => x.id!==item.id));
       };
 
-      const generaVerbale = async () => {
+      // === generazione risultato ===
+      const genera = async () => {
         if (!appunti.trim()) { alert("Inserisci o trascrivi degli appunti"); return; }
-
-        // Caso "nessuna trasformazione"
         if (mode === "none") { setVerbale(appunti); return; }
-
         setLoading(true);
         try {
           const r = await fetch(API.format, {
@@ -198,76 +208,3 @@
                     <div className="text-sm">
                       <div className="font-medium">{item.name}</div>
                       <div className="text-slate-500">{item.type} · {item.status}</div>
-                    </div>
-                    <div className="flex gap-2">
-                      {item.type === "audio" && (
-                        <button onClick={() => transcribe(item)}
-                          className="px-3 py-1 rounded bg-blue-600 text-white text-sm">
-                          Trascrivi
-                        </button>
-                      )}
-                      <button onClick={() => cleanupFile(item)}
-                        className="px-3 py-1 rounded bg-slate-100 text-sm hover:bg-slate-200">
-                        Rimuovi
-                      </button>
-                    </div>
-                  </div>
-                </li>
-              ))}
-              {queue.length === 0 && <li className="text-sm text-slate-500">Nessun file in coda.</li>}
-            </ul>
-          </section>
-
-          {/* Appunti */}
-          <section className="bg-white rounded-2xl shadow p-5">
-            <h2 className="text-lg font-semibold mb-2">Appunti</h2>
-            <textarea
-              rows="8"
-              value={appunti}
-              onChange={e => setAppunti(e.target.value)}
-              className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Incolla note o usa la trascrizione/estrazione file..."
-            ></textarea>
-
-            <div className="mt-3 flex gap-2 items-center">
-              <select value={mode} onChange={e=>setMode(e.target.value)}
-                className="px-3 py-2 border rounded-lg text-sm">
-                <option value="minutes">Genera verbale</option>
-                <option value="summary">Riepilogo breve</option>
-                <option value="clean">Solo pulizia testo</option>
-                <option value="none">Nessuna trasformazione</option>
-              </select>
-
-              <button onClick={generaVerbale} disabled={loading}
-                className="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60">
-                {loading ? "Genero…" : "Genera"}
-              </button>
-              <button onClick={resetAll}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200">
-                Reset
-              </button>
-            </div>
-          </section>
-
-          {/* Verbale */}
-          <section className="bg-white rounded-2xl shadow p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Risultato</h2>
-              <div className="flex gap-2">
-                <button onClick={copia} disabled={!verbale}
-                  className="px-3 py-2 rounded bg-slate-100 text-sm">Copia</button>
-                <button onClick={scarica} disabled={!verbale}
-                  className="px-3 py-2 rounded bg-slate-100 text-sm">Scarica .md</button>
-              </div>
-            </div>
-            <pre className="mt-3 whitespace-pre-wrap text-sm leading-6">{verbale || "—"}</pre>
-          </section>
-        </div>
-      );
-    }
-
-    const root = ReactDOM.createRoot(document.getElementById("root"));
-    root.render(<App />);
-  </script>
-</body>
-</html>
