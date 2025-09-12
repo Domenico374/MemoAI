@@ -64,7 +64,7 @@ Genera un verbale completo, ben formattato e professionale.`;
 
     // Chiamata all'API OpenAI
     const completion = await openai.chat.completions.create({
-      model: "gpt-4", // Usa gpt-4 per risultati migliori, o "gpt-3.5-turbo" per risparmiare
+      model: "gpt-3.5-turbo", // Cambiato a 3.5-turbo per evitare rate limits
       messages: [
         {
           role: "system",
@@ -75,7 +75,7 @@ Genera un verbale completo, ben formattato e professionale.`;
           content: userPrompt
         }
       ],
-      max_tokens: 2000,
+      max_tokens: 1500, // Ridotto per risparmiare token
       temperature: 0.3, // Bassa temperatura per output più consistente
     });
 
