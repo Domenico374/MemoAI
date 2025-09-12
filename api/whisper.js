@@ -2,7 +2,8 @@
 import OpenAI from "openai";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
+const MAX_BYTES = 100 * 1024 * 1024; // 100 MB
+
 
 function parseDataURL(dataURL) {
   // data:<mime>;base64,<payload>
