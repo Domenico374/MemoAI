@@ -7,10 +7,9 @@
     "openai": "^4.56.0"
   },
   "scripts": {
-    "dev": "vercel dev",
-    "start": "node api/minutes.js"
+    "dev": "vercel dev"
   },
   "engines": {
-    "node": "22.x"
+    "node": "20.x || 22.x"
   }
 }
