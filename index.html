@@ -5,9 +5,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Memo AI</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <style> body { background:#f5f7fb } </style>
+  <style>
+    body { background:#f5f7fb }
+    #bootlog { position: fixed; top: 8px; right: 8px; max-width: 48ch; z-index: 9999;
+      background: #0f172a; color: #e2e8f0; font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      padding: 10px 12px; border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,.25); }
+    #bootlog .ok { color: #86efac } #bootlog .err { color: #fecaca }
+  </style>
 </head>
 <body class="text-slate-800">
+  <div id="bootlog">Boot log…</div>
+
   <div class="max-w-4xl mx-auto p-6">
     <header class="mb-6">
       <h1 class="text-3xl font-bold">Memo AI</h1>
@@ -21,7 +29,39 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
+  <script>
+    (function(){
+      const box = document.getElementById('bootlog');
+      const log = (msg, cls='') => {
+        const p = document.createElement('div');
+        if (cls) p.className = cls;
+        p.textContent = msg;
+        box.appendChild(p);
+        console.log('[BOOT]', msg);
+      };
+      window.__bootlog = log;
+
+      // Global error catcher
+      window.addEventListener('error', (e) => {
+        log('JS error: ' + (e.message || e.error?.message || 'unknown'), 'err');
+      });
+      window.addEventListener('unhandledrejection', (e) => {
+        log('Promise rejection: ' + (e.reason?.message || e.reason || 'unknown'), 'err');
+      });
+
+      // Basic checks
+      log('Checking globals…');
+      if (typeof React === 'object') log('React OK', 'ok'); else log('React MISSING', 'err');
+      if (typeof ReactDOM === 'object') log('ReactDOM OK', 'ok'); else log('ReactDOM MISSING', 'err');
+      if (typeof Babel === 'object') log('Babel OK', 'ok'); else log('Babel MISSING', 'err');
+    })();
+  </script>
+
+  <!-- APP (JSX) -->
   <script type="text/babel">
+    const log = window.__bootlog || ((m)=>console.log(m));
+    log('Entering JSX script…','ok');
+
     const { useState, useRef } = React;
     const API = {
       upload: "/api/upload",
@@ -69,7 +109,12 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ fileName: file.name, dataURL })
         });
-        if (!uRes.ok) { alert("Upload fallito"); return; }
+        if (!uRes.ok) {
+          const t = await uRes.text().catch(()=> '');
+          log('Upload failed: ' + t, 'err');
+          alert("Upload fallito");
+          return;
+        }
 
         const { fileId } = await uRes.json();
         setQueue(q => [...q, { id:fileId, name:file.name, type:kind, status:"caricato" }]);
@@ -85,92 +130,4 @@
           });
           const data = await x.json().catch(()=>({}));
           if (!x.ok) {
-            alert(data.message || "Errore estrazione testo");
-            setQueue(q => q.map(item => item.id===fileId ? {...item, status:"errore estrazione"} : item));
-          } else {
-            const header = `\n---\n[Estratto ${file.name}]\n`;
-            setAppunti(prev => (prev ? prev + header + data.text : data.text));
-            setQueue(q => q.map(item => item.id===fileId ? {...item, status:"estratto"} : item));
-          }
-        }
-      };
-
-      const transcribe = async (item) => {
-        setQueue(q => q.map(x => x.id===item.id ? {...x, status:"trascrivo…"} : x));
-        const r = await fetch(API.whisper, {
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ fileId: item.id })
-        });
-        const data = await r.json().catch(()=>({}));
-        if (!r.ok) {
-          alert(data.message || "Errore trascrizione");
-          setQueue(q => q.map(x => x.id===item.id ? {...x, status:"errore trascrizione"} : x));
-          return;
-        }
-        setQueue(q => q.map(x => x.id===item.id ? {...x, status:"trascritto"} : x));
-        setAppunti(prev => prev + `\n---\n[Trascrizione ${item.name}]\n` + (data.text || ""));
-      };
-
-      const cleanupFile = async (item) => {
-        await fetch(API.cleanup, {
-          method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ fileId:item.id })
-        });
-        setQueue(q => q.filter(x => x.id!==item.id));
-      };
-
-      const generaVerbale = async () => {
-        if (!appunti.trim()) { alert("Inserisci o trascrivi degli appunti"); return; }
-        setLoading(true);
-        try {
-          const r = await fetch(API.format, {
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body: JSON.stringify({ notes: appunti })
-          });
-          const data = await r.json();
-          if (!r.ok) throw new Error(data.message||"Errore formattazione");
-          setVerbale(data.verbale || "");
-        } catch (e) {
-          alert(e.message);
-        } finally { setLoading(false); }
-      };
-
-      const copia = async () => {
-        if (!verbale) return;
-        await navigator.clipboard.writeText(verbale);
-        alert("Copiato!");
-      };
-
-      const scarica = () => {
-        if (!verbale) return;
-        const a=document.createElement("a");
-        a.href=URL.createObjectURL(new Blob([verbale],{type:"text/markdown;charset=utf-8"}));
-        a.download=`verbale_${new Date().toISOString().split("T")[0]}.md`;
-        a.click();
-        URL.revokeObjectURL(a.href);
-      };
-
-      const resetAll = () => {
-        setQueue([]); setAppunti(""); setVerbale("");
-      };
-
-      return (
-        <div className="space-y-8">
-          {/* Upload */}
-          <section className="bg-white rounded-2xl shadow p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Upload file</h2>
-              <div>
-                <input
-                  ref={inputRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  accept=".txt,.md,.docx,.pdf,.mp3,.m4a,.wav,.ogg,.webm"
-                  onChange={onFiles}
-                />
-                <button onClick={pickFiles}
-                  className="px-3 py-2 rounded-lg bg-slate-10
+            log('Extract error: ' + (data?.message || x.status), 'er
