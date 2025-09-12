@@ -1,371 +1,208 @@
- import React, { useState, useRef } from 'react';
-import { FileText, Copy, Download, Calendar, Users, Target, Settings, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Memo AI</title>
 
-const MemoAI = () => {
-  // Stati principali
-  const [appunti, setAppunti] = useState(`Discussione:
-- Tetto: presentati due preventivi, differenza su materiali e tempi di consegna
-- Giardino: proposta di sostituire impianto di irrigazione obsoleto  
-- Varie: segnalata lampadina scala rotta
+  <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background:#f5f7fb }
+  </style>
+</head>
+<body class="text-slate-800">
+  <div class="max-w-3xl mx-auto p-6">
+    <header class="mb-6">
+      <h1 class="text-3xl font-bold">Memo AI</h1>
+      <p class="text-sm text-slate-600">Dagli appunti al verbale in un click</p>
+    </header>
 
-Decisioni:
-- Approvato preventivo ditta Gamma per rifacimento tetto (€ 28.500)
-- Impianto irrigazione rinviato a prossima seduta per ulteriori preventivi
-- Amministratore incaricato di sostituire lampadina entro la settimana
+    <div id="root"></div>
+  </div>
 
-Prossima riunione: fissata al 10/10/2025 ore 21:00`);
-  
-  const [verbale, setVerbale] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState('');
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  
-  // Parametri avanzati
-  const [dataRiunione, setDataRiunione] = useState('');
-  const [partecipanti, setPartecipanti] = useState('');
-  const [oggetto, setOggetto] = useState('');
-  const [formatoVerbale, setFormatoVerbale] = useState('standard');
-  
-  const [metadati, setMetadati] = useState(null);
-  const textareaRef = useRef(null);
+  <!-- React & Babel (CDN) -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  // Funzione principale per generare il verbale
-  const generaVerbale = async () => {
-    if (!appunti.trim()) {
-      setError('Inserisci gli appunti prima di generare il verbale');
-      return;
-    }
+  <!-- La tua app in JSX: usare type="text/babel" è ESSENZIALE -->
+  <script type="text/babel">
+    const { useState } = React;
 
-    setLoading(true);
-    setError('');
-    setSuccess(false);
-    setVerbale('');
-    setMetadati(null);
+    function MemoAI() {
+      const [appunti, setAppunti] = useState("");
+      const [dataRiunione, setDataRiunione] = useState("");
+      const [partecipanti, setPartecipanti] = useState("");
+      const [oggetto, setOggetto] = useState("");
+      const [formatoVerbale, setFormatoVerbale] = useState("standard");
+      const [verbale, setVerbale] = useState("");
+      const [loading, setLoading] = useState(false);
+      const [success, setSuccess] = useState(false);
+      const [error, setError] = useState("");
 
-    try {
-      const response = await fetch('/api/minutes', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          notes: appunti,
-          dataRiunione: dataRiunione || undefined,
-          partecipanti: partecipanti || undefined,
-          oggetto: oggetto || undefined,
-          formatoVerbale: formatoVerbale
-        }),
-      });
+      const generaVerbale = async () => {
+        setError("");
+        setSuccess(false);
 
-      const data = await response.json();
+        if (!appunti.trim()) {
+          setError("Inserisci gli appunti prima di generare il verbale");
+          return;
+        }
+        setLoading(true);
 
-      if (!response.ok) {
-        throw new Error(data.message || `Errore ${response.status}: ${data.error}`);
-      }
-
-      if (data.success) {
-        setVerbale(data.verbale);
-        setMetadati(data.metadati);
-        setSuccess(true);
-        
-        // Scroll automatico al risultato
-        setTimeout(() => {
-          document.getElementById('verbale-section')?.scrollIntoView({ 
-            behavior: 'smooth' 
+        try {
+          // 👉 Modifica l’endpoint se usi una tua API
+          const res = await fetch("/api/verbale", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              notes: appunti,
+              metadati: { dataRiunione, partecipanti, oggetto, formatoVerbale }
+            })
           });
-        }, 100);
-      } else {
-        throw new Error(data.message || 'Errore sconosciuto nella generazione');
-      }
 
-    } catch (err) {
-      console.error('Errore generazione verbale:', err);
-      setError(err.message || 'Errore durante la generazione del verbale');
-    } finally {
-      setLoading(false);
-    }
-  };
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.message || "Errore nella generazione del verbale");
+          }
 
-  // Funzione per copiare il verbale
-  const copiaVerbale = async () => {
-    try {
-      await navigator.clipboard.writeText(verbale);
-      
-      // Feedback visivo temporaneo
-      const copyBtn = document.getElementById('copy-btn');
-      if (copyBtn) {
-        const originalText = copyBtn.textContent;
-        copyBtn.textContent = 'Copiato!';
-        copyBtn.classList.add('bg-green-100', 'text-green-700');
-        
-        setTimeout(() => {
-          copyBtn.textContent = originalText;
-          copyBtn.classList.remove('bg-green-100', 'text-green-700');
-        }, 2000);
-      }
-    } catch (err) {
-      console.error('Errore nella copia:', err);
-      setError('Impossibile copiare il testo');
-    }
-  };
+          const data = await res.json();
+          setVerbale(data.verbale || "");
+          setSuccess(true);
 
-  // Funzione per scaricare il verbale in formato Markdown
-  const scaricaMd = () => {
-    try {
-      const blob = new Blob([verbale], { type: 'text/markdown;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      
-      a.href = url;
-      a.download = `verbale_${new Date().toISOString().split('T')[0]}.md`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      console.error('Errore download:', err);
-      setError('Impossibile scaricare il file');
-    }
-  };
+          // scroll al risultato
+          setTimeout(() => {
+            document.getElementById("verbale-section")?.scrollIntoView({ behavior: "smooth" });
+          }, 100);
+        } catch (e) {
+          setError(e.message || "Errore sconosciuto");
+        } finally {
+          setLoading(false);
+        }
+      };
 
-  // Funzione per resettare il form
-  const resetForm = () => {
-    setAppunti('');
-    setVerbale('');
-    setError('');
-    setSuccess(false);
-    setMetadati(null);
-    setDataRiunione('');
-    setPartecipanti('');
-    setOggetto('');
-    setFormatoVerbale('standard');
-  };
+      const copiaTesto = async () => {
+        try {
+          await navigator.clipboard.writeText(verbale);
+          alert("Copiato!");
+        } catch {
+          alert("Impossibile copiare il testo");
+        }
+      };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-4">
-      <div className="max-w-6xl mx-auto">
-        
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="bg-blue-600 p-3 rounded-xl shadow-lg">
-              <FileText className="w-8 h-8 text-white" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-800">Memo AI</h1>
-              <p className="text-gray-600">Dagli appunti al verbale in un click</p>
-            </div>
-          </div>
-        </div>
+      const scaricaMD = () => {
+        try {
+          const blob = new Blob([verbale], { type: "text/markdown;charset=utf-8" });
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = `verbale_${new Date().toISOString().split("T")[0]}.md`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(a.href);
+        } catch {
+          alert("Impossibile scaricare il file");
+        }
+      };
 
-        <div className="grid lg:grid-cols-2 gap-8">
-          
-          {/* Sezione Input */}
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
-                <Target className="w-5 h-5 text-blue-600" />
-                Incolla qui i tuoi appunti:
-              </h2>
-              <button
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="flex items-center gap-2 px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-              >
-                <Settings className="w-4 h-4" />
-                {showAdvanced ? 'Nascondi' : 'Opzioni'}
-              </button>
-            </div>
+      const resetForm = () => {
+        setAppunti("");
+        setVerbale("");
+        setError("");
+        setSuccess(false);
+        setDataRiunione("");
+        setPartecipanti("");
+        setOggetto("");
+        setFormatoVerbale("standard");
+      };
 
-            {/* Opzioni Avanzate */}
-            {showAdvanced && (
-              <div className="mb-6 p-4 bg-gray-50 rounded-lg space-y-4">
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      <Calendar className="inline w-4 h-4 mr-1" />
-                      Data Riunione
-                    </label>
-                    <input
-                      type="date"
-                      value={dataRiunione}
-                      onChange={(e) => setDataRiunione(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      <Users className="inline w-4 h-4 mr-1" />
-                      Partecipanti
-                    </label>
-                    <input
-                      type="text"
-                      value={partecipanti}
-                      onChange={(e) => setPartecipanti(e.target.value)}
-                      placeholder="Mario Rossi, Anna Verdi..."
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Oggetto della Riunione
-                  </label>
-                  <input
-                    type="text"
-                    value={oggetto}
-                    onChange={(e) => setOggetto(e.target.value)}
-                    placeholder="Assemblea condominiale, Meeting team..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Formato Verbale
-                  </label>
-                  <select
-                    value={formatoVerbale}
-                    onChange={(e) => setFormatoVerbale(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
+      return (
+        <div className="space-y-8">
+          {/* Sezione input */}
+          <section className="bg-white rounded-2xl shadow p-5">
+            <h2 className="text-lg font-semibold mb-4">Incolla qui i tuoi appunti:</h2>
+
+            {/* Opzioni avanzate */}
+            <details className="mb-4">
+              <summary className="cursor-pointer text-sm text-blue-700">Opzioni avanzate</summary>
+              <div className="mt-3 grid sm:grid-cols-2 gap-4">
+                <label className="block text-sm">
+                  <span className="text-slate-600">Data Riunione</span>
+                  <input type="text" value={dataRiunione}
+                         onChange={(e)=>setDataRiunione(e.target.value)}
+                         placeholder="gg/mm/aaaa"
+                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                </label>
+
+                <label className="block text-sm">
+                  <span className="text-slate-600">Partecipanti</span>
+                  <input type="text" value={partecipanti}
+                         onChange={(e)=>setPartecipanti(e.target.value)}
+                         placeholder="Mario Rossi, Anna Verdi…"
+                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                </label>
+
+                <label className="block text-sm sm:col-span-2">
+                  <span className="text-slate-600">Oggetto della riunione</span>
+                  <input type="text" value={oggetto}
+                         onChange={(e)=>setOggetto(e.target.value)}
+                         placeholder="Assemblea condominiale, Meeting team…"
+                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+                </label>
+
+                <label className="block text-sm">
+                  <span className="text-slate-600">Formato verbale</span>
+                  <select value={formatoVerbale}
+                          onChange={(e)=>setFormatoVerbale(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     <option value="standard">Standard</option>
-                    <option value="formale">Formale</option>
-                    <option value="sintetico">Sintetico</option>
-                    <option value="dettagliato">Dettagliato</option>
+                    <option value="markdown">Markdown</option>
                   </select>
-                </div>
+                </label>
               </div>
-            )}
+            </details>
 
-            {/* Textarea principale */}
             <textarea
-              ref={textareaRef}
               value={appunti}
-              onChange={(e) => setAppunti(e.target.value)}
-              placeholder="Inserisci qui i tuoi appunti di riunione..."
-              className="w-full h-64 p-4 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            
-            <div className="flex justify-between items-center mt-4 text-sm text-gray-500">
-              <span>{appunti.length} / 10.000 caratteri</span>
-              <button
-                onClick={resetForm}
-                className="text-red-600 hover:text-red-700 font-medium transition-colors"
-              >
-                Cancella tutto
+              onChange={(e)=>setAppunti(e.target.value)}
+              rows="8"
+              className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="- Discussione: preventivo, differenza su materiali e tempi…"></textarea>
+
+            <div className="mt-4 flex gap-3">
+              <button onClick={generaVerbale}
+                      disabled={loading}
+                      className="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60">
+                {loading ? "Genero…" : "Genera verbale"}
               </button>
+              <button onClick={resetForm} className="px-4 py-2 rounded-xl bg-slate-200 hover:bg-slate-300">Reset</button>
             </div>
 
-            {/* Pulsante principale */}
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={generaVerbale}
-                disabled={loading || !appunti.trim() || appunti.length > 10000}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Generazione in corso...
-                  </>
-                ) : (
-                  'Genera Verbale'
-                )}
-              </button>
-            </div>
+            {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+            {success && <p className="mt-3 text-sm text-green-600">Verbale generato con successo.</p>}
+          </section>
 
-            {/* Messaggi di stato */}
-            {error && (
-              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
-                <div>
-                  <p className="text-red-800 font-medium">Errore</p>
-                  <p className="text-red-700 text-sm">{error}</p>
-                </div>
+          {/* Risultato */}
+          <section id="verbale-section" className="bg-white rounded-2xl shadow p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold">Verbale</h2>
+              <div className="flex gap-2">
+                <button onClick={copiaTesto} className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200">Copia</button>
+                <button onClick={scaricaMD} className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200">Scarica .md</button>
               </div>
-            )}
-
-            {success && !loading && (
-              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
-                <CheckCircle className="w-5 h-5 text-green-500" />
-                <span className="text-green-800 font-medium">Verbale generato con successo!</span>
-              </div>
-            )}
-          </div>
-
-          {/* Sezione Output */}
-          <div id="verbale-section" className="bg-white rounded-xl shadow-lg p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold text-gray-800">Verbale</h2>
-              {verbale && (
-                <div className="flex gap-2">
-                  <button
-                    id="copy-btn"
-                    onClick={copiaVerbale}
-                    className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-                  >
-                    <Copy className="w-4 h-4" />
-                    Copia testo
-                  </button>
-                  <button
-                    onClick={scaricaMd}
-                    className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors"
-                  >
-                    <Download className="w-4 h-4" />
-                    Scarica .md
-                  </button>
-                </div>
-              )}
             </div>
-
-            {/* Area di visualizzazione verbale */}
-            <div className="bg-gray-900 rounded-lg p-4 min-h-64">
-              {verbale ? (
-                <pre className="text-gray-300 text-sm whitespace-pre-wrap font-mono overflow-x-auto">
-                  {verbale}
-                </pre>
-              ) : (
-                <div className="flex items-center justify-center h-64 text-gray-500">
-                  <div className="text-center">
-                    <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                    <p>Il verbale generato apparirà qui</p>
-                    <p className="text-sm mt-2">Inserisci i tuoi appunti e clicca "Genera Verbale"</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Metadati */}
-            {metadati && (
-              <div className="mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-600">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <strong>Token utilizzati:</strong> {metadati.token_utilizzati}
-                  </div>
-                  <div>
-                    <strong>Modello:</strong> {metadati.modello_usato}
-                  </div>
-                  <div>
-                    <strong>Caratteri elaborati:</strong> {metadati.caratteri_processati}
-                  </div>
-                  <div>
-                    <strong>Formato:</strong> {metadati.formato_richiesto}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+            <pre className="whitespace-pre-wrap text-sm leading-6 text-slate-800">
+{verbale || "Il verbale comparirà qui…"}
+            </pre>
+          </section>
         </div>
+      );
+    }
 
-        {/* Footer */}
-        <div className="text-center mt-8 text-gray-500 text-sm">
-          <p>Powered by AI • Trasforma i tuoi appunti in verbali professionali</p>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default MemoAI;            
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<MemoAI />);
+  </script>
+</body>
+</html>
+        
