@@ -1,5 +1,5 @@
 // api/extract.js
-import mammoth from "mammoth";
+import * as mammoth from "mammoth";
 import pdfParse from "pdf-parse";
 
 const MAX_BYTES = 24 * 1024 * 1024; // 24 MB
@@ -13,7 +13,7 @@ function normalizeText(s = "") {
     .trim();
 }
 
-// data:<mime>;base64,<payload>  -> { mime, buffer }
+// data:<mime>;base64,<payload> -> { mime, buffer }
 function parseDataURL(dataURL) {
   const m = /^data:([^;]+);base64,(.+)$/s.exec(dataURL || "");
   if (!m) return null;
@@ -47,9 +47,9 @@ export default async function handler(req, res) {
       });
     }
 
-    const { mime, buffer } = parsed;
+    let { mime, buffer } = parsed;
 
-    if (!buffer.length) {
+    if (!buffer?.length) {
       return res.status(400).json({ message: "Buffer vuoto", detail: "Payload Base64 decodificato vuoto." });
     }
     if (buffer.length > MAX_BYTES) {
@@ -59,7 +59,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // Deduci estensione: 1) fileName  2) fileId  3) mime
+    // Deduzione estensione: 1) fileName  2) fileId  3) MIME
     const name = (fileName || fileId || "").toLowerCase();
     let ext = name.includes(".") ? name.split(".").pop() : "";
     if (!ext || !/^[a-z0-9]+$/.test(ext)) {
@@ -71,20 +71,22 @@ export default async function handler(req, res) {
 
     let text = "";
 
-    // DOCX
+    // --- DOCX ---
     if (ext === "docx" || mime.includes("wordprocessingml")) {
       try {
-        const r = await mammoth.extractRawText({ buffer });
-        text = r?.value || "";
+        // mammoth preferisce un vero Buffer Node
+        const buf2 = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+        const result = await mammoth.extractRawText({ buffer: buf2 });
+        text = result?.value || "";
       } catch (e) {
         console.error("mammoth error:", e);
         return res.status(500).json({
           message: "Errore estrazione DOCX",
-          detail: e.message
+          detail: e?.message || "mammoth non è riuscito a leggere il file"
         });
       }
     }
-    // PDF (testuali)
+    // --- PDF (solo testuali) ---
     else if (ext === "pdf" || mime.includes("pdf")) {
       try {
         const r = await pdfParse(buffer);
@@ -99,15 +101,15 @@ export default async function handler(req, res) {
       if (!text.trim()) {
         return res.status(422).json({
           message: "PDF senza testo estraibile",
-          detail: "Il PDF sembra una scansione. Serve OCR."
+          detail: "Il PDF sembra una scansione (solo immagini). Serve OCR."
         });
       }
     }
-    // TXT / MD
+    // --- TXT / MD ---
     else if (ext === "md" || ext === "txt" || mime.includes("text")) {
       text = buffer.toString("utf-8");
     }
-    // Non supportato
+    // --- Non supportato ---
     else {
       return res.status(400).json({
         message: "Estensione/MIME non supportati",
