@@ -27,15 +27,15 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method === "GET")   return res.status(200).json({ ok: true, route: "/api/extract" });
-  if (req.method !== "POST")  return res.status(405).json({ message: "POST only" });
+  if (req.method === "GET") return res.status(200).json({ ok: true, route: "/api/extract" });
+  if (req.method !== "POST") return res.status(405).json({ message: "POST only" });
 
   try {
-    const { dataURL, fileId } = req.body || {};
+    const { dataURL, fileId, fileName } = req.body || {};
     if (!dataURL) {
       return res.status(400).json({
         message: "dataURL mancante",
-        detail: "Invia il file in Base64 come dataURL: data:<mime>;base64,<payload>"
+        detail: "Invia il file in Base64 come data:<mime>;base64,<payload>"
       });
     }
 
@@ -59,13 +59,14 @@ export default async function handler(req, res) {
       });
     }
 
-    // Prova a dedurre estensione se non fornita
-    let ext = (fileId?.split(".").pop() || "").toLowerCase();
-    if (!ext) {
-      if (mime.includes("word"))        ext = "docx";
-      else if (mime.includes("pdf"))    ext = "pdf";
+    // Deduci estensione: 1) fileName  2) fileId  3) mime
+    const name = (fileName || fileId || "").toLowerCase();
+    let ext = name.includes(".") ? name.split(".").pop() : "";
+    if (!ext || !/^[a-z0-9]+$/.test(ext)) {
+      if (mime.includes("word")) ext = "docx";
+      else if (mime.includes("pdf")) ext = "pdf";
       else if (mime.includes("markdown")) ext = "md";
-      else if (mime.includes("text"))   ext = "txt";
+      else if (mime.includes("text")) ext = "txt";
     }
 
     let text = "";
@@ -83,7 +84,7 @@ export default async function handler(req, res) {
         });
       }
     }
-    // PDF (solo testuali)
+    // PDF (testuali)
     else if (ext === "pdf" || mime.includes("pdf")) {
       try {
         const r = await pdfParse(buffer);
@@ -92,13 +93,13 @@ export default async function handler(req, res) {
         console.error("pdf-parse error:", e);
         return res.status(415).json({
           message: "PDF non testuale o protetto",
-          detail: "Impossibile leggere il testo con pdf-parse. Probabile scansione/immagini."
+          detail: "Impossibile leggerlo con pdf-parse. Probabile scansione/immagini."
         });
       }
       if (!text.trim()) {
         return res.status(422).json({
           message: "PDF senza testo estraibile",
-          detail: "Il PDF sembra una scansione (solo immagini). Serve OCR."
+          detail: "Il PDF sembra una scansione. Serve OCR."
         });
       }
     }
@@ -110,7 +111,7 @@ export default async function handler(req, res) {
     else {
       return res.status(400).json({
         message: "Estensione/MIME non supportati",
-        detail: `Ext rilevata: ${ext || "?"} - MIME: ${mime}`,
+        detail: `Ext: ${ext || "?"} · MIME: ${mime}`,
         supported: ["docx", "pdf", "txt", "md"]
       });
     }
