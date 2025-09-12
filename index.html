@@ -1,132 +1,348 @@
-<!DOCTYPE html>
-<html lang="it">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Memo AI — Appunti → Verbale</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-  <style>
-    :root{ --brand:#0d3b4f; --ink:#0f172a; --muted:#475569; --page:#f4f7fb; --ok:#0e9f6e; --err:#ef4444; --card:#fff; --ring:#93c5fd; --shadow:0 8px 24px rgba(2,6,23,.08) }
-    *{box-sizing:border-box}
-    body{margin:0;font-family:Inter,system-ui,Segoe UI,Arial,sans-serif;background:var(--page);color:var(--ink)}
-    .wrap{max-width:900px;margin:40px auto;padding:0 16px}
-    h1{display:flex;align-items:center;gap:10px;margin:0 0 14px}
-    h1 small{color:var(--muted);font-size:.9rem;font-weight:600}
-    .card{background:var(--card);border-radius:16px;box-shadow:var(--shadow);border:1px solid #e5e7eb}
-    .pad{padding:18px}
-    label{font-weight:700}
-    textarea{width:100%;min-height:220px;padding:12px;border-radius:12px;border:1px solid #cbd5e1;font:inherit}
-    textarea:focus{outline:none;box-shadow:0 0 0 3px var(--ring)}
-    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
-    .btn{background:var(--brand);color:#fff;border:none;border-radius:12px;padding:10px 16px;font-weight:700;cursor:pointer}
-    .btn.secondary{background:#0b1b2a}
-    .btn.ghost{background:#fff;color:var(--brand);border:1px solid #cbd5e1}
-    .status{margin-top:12px;padding:10px 12px;border-radius:10px;font-size:.95rem}
-    .ok{background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0}
-    .err{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
-    pre{margin:0;max-height:60vh;overflow:auto;background:#0b1220;color:#e6edf3;padding:14px;border-radius:12px;white-space:pre-wrap}
-    .spin{width:16px;height:16px;border:3px solid #93c5fd;border-top-color:transparent;border-radius:50%;display:inline-block;animation:rot 1s linear infinite;margin-right:8px}
-    @keyframes rot{to{transform:rotate(360deg)}}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <h1>📝 Memo AI <small>— Dagli appunti al verbale in un click</small></h1>
+import React, { useState, useRef } from 'react';
+import { FileText, Copy, Download, Calendar, Users, Target, Settings, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 
-    <div class="card pad">
-      <label for="notes">Incolla qui i tuoi appunti:</label>
-      <textarea id="notes" placeholder="- Data/ora: 12/09, 21:00
-- Presenti: Rossi, Bianchi, Verdi
-- ODG: preventivo facciata; riparto spese; varie
-- Decisioni: accettato preventivo A; riparto millesimi; prossimo incontro 30/09"></textarea>
+const MemoAI = () => {
+  const [appunti, setAppunti] = useState(`Discussione:
+- Tetto: presentati due preventivi, differenza su materiali e tempi di consegna
+- Giardino: proposta di sostituire impianto di irrigazione obsoleto
+- Varie: segnalata lampadina scala rotta
 
-      <div class="row">
-        <button id="btnGen" class="btn">Genera Verbale</button>
-        <button id="btnCopy" class="btn ghost" disabled>Copia testo</button>
-        <button id="btnDownload" class="btn secondary" disabled>Scarica .md</button>
-      </div>
+Decisioni:
+- Approvato preventivo ditta Gamma per rifacimento tetto (€ 28.500)
+- Impianto irrigazione rinviato a prossima seduta per ulteriori preventivi
+- Amministratore incaricato di sostituire lampadina entro la settimana
 
-      <div id="status" class="status" style="display:none"></div>
+Prossima riunione: fissata al 10/10/2025 ore 21:00`);
+  
+  const [verbale, setVerbale] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  
+  // Parametri avanzati
+  const [dataRiunione, setDataRiunione] = useState('');
+  const [partecipanti, setPartecipanti] = useState('');
+  const [oggetto, setOggetto] = useState('');
+  const [formatoVerbale, setFormatoVerbale] = useState('standard');
+  
+  const [metadati, setMetadati] = useState(null);
+  const textareaRef = useRef(null);
 
-      <h3>Verbale</h3>
-      <pre id="out">// In attesa...</pre>
-    </div>
-  </div>
-
-  <script>
-  (function(){
-    "use strict";
-    const $ = (s)=>document.querySelector(s);
-    const notesEl = $("#notes");
-    const btnGen  = $("#btnGen");
-    const btnCopy = $("#btnCopy");
-    const btnDl   = $("#btnDownload");
-    const out     = $("#out");
-    const status  = $("#status");
-
-    // Endpoint: corretto per locale e produzione
-    const PROD = "https://memo-ai.vercel.app";
-    const MINUTES_URL =
-      (location.protocol === "file:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")
-        ? `${PROD}/api/minutes`
-        : "/api/minutes";
-
-    function setStatus(msg, isErr=false){
-      status.className = "status " + (isErr? "err":"ok");
-      status.style.display = "block";
-      status.innerHTML = msg;
-    }
-    function downloadText(name, text){
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([text], {type:"text/markdown"}));
-      a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  const generaVerbale = async () => {
+    if (!appunti.trim()) {
+      setError('Inserisci gli appunti prima di generare il verbale');
+      return;
     }
 
-    btnGen.addEventListener("click", async ()=>{
-      const content = (notesEl.value||"").trim();
-      if (content.length < 10) return setStatus("Inserisci appunti sufficienti.", true);
+    setLoading(true);
+    setError('');
+    setSuccess(false);
+    setVerbale('');
+    setMetadati(null);
 
-      btnGen.disabled = true; btnCopy.disabled = true; btnDl.disabled = true;
-      setStatus('<span class="spin"></span>Genero il verbale...');
-      out.textContent = "// In lavorazione...";
+    try {
+      const response = await fetch('/api/minutes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          notes: appunti,
+          dataRiunione: dataRiunione || undefined,
+          partecipanti: partecipanti || undefined,
+          oggetto: oggetto || undefined,
+          formatoVerbale: formatoVerbale
+        }),
+      });
 
-      try{
-        const r = await fetch(MINUTES_URL, {
-          method: "POST",
-          headers: { "Content-Type":"application/json" },
-          body: JSON.stringify({ notes: content })
-        });
-        const text = await r.text();
-        let data; try{ data = JSON.parse(text); } catch { data = { raw:text }; }
-        if(!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
+      const data = await response.json();
 
-        const minutes = data.minutes || data.text || "";
-        out.textContent = minutes || "// Nessun testo generato";
-        setStatus("✅ Fatto!");
-        btnCopy.disabled = !minutes; btnDl.disabled = !minutes;
-      }catch(e){
-        console.error(e);
-        setStatus("❌ " + e.message, true);
-        out.textContent = "// Errore.";
-      }finally{
-        btnGen.disabled = false;
+      if (!response.ok) {
+        throw new Error(data.message || `Errore ${response.status}`);
       }
-    });
 
-    btnCopy.addEventListener("click", async ()=>{
-      await navigator.clipboard.writeText(out.textContent || "");
-      setStatus("📋 Copiato negli appunti");
-    });
+      if (data.success) {
+        setVerbale(data.verbale);
+        setMetadati(data.metadati);
+        setSuccess(true);
+        
+        // Scroll automatico al risultato
+        setTimeout(() => {
+          document.getElementById('verbale-section')?.scrollIntoView({ 
+            behavior: 'smooth' 
+          });
+        }, 100);
+      } else {
+        throw new Error(data.message || 'Errore sconosciuto');
+      }
 
-    btnDl.addEventListener("click", ()=>{
-      downloadText("verbale-memoai.md", out.textContent || "");
-      <!-- Redeploy test -->
+    } catch (err) {
+      console.error('Errore:', err);
+      setError(err.message || 'Errore durante la generazione del verbale');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    });
-  })();
-  </script>
-</body>
-</html>
+  const copiaVerbale = async () => {
+    try {
+      await navigator.clipboard.writeText(verbale);
+      // Feedback visivo temporaneo
+      const originalText = document.getElementById('copy-btn')?.textContent;
+      const copyBtn = document.getElementById('copy-btn');
+      if (copyBtn) {
+        copyBtn.textContent = 'Copiato!';
+        setTimeout(() => {
+          copyBtn.textContent = originalText;
+        }, 2000);
+      }
+    } catch (err) {
+      console.error('Errore nella copia:', err);
+    }
+  };
+
+  const scaricaMd = () => {
+    const blob = new Blob([verbale], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `verbale_${new Date().toISOString().split('T')[0]}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const resetForm = () => {
+    setAppunti('');
+    setVerbale('');
+    setError('');
+    setSuccess(false);
+    setMetadati(null);
+    setDataRiunione('');
+    setPartecipanti('');
+    setOggetto('');
+    setFormatoVerbale('standard');
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-4">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <div className="bg-blue-600 p-3 rounded-xl">
+              <FileText className="w-8 h-8 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-800">Memo AI</h1>
+              <p className="text-gray-600">Dagli appunti al verbale in un click</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid lg:grid-cols-2 gap-8">
+          {/* Sezione Input */}
+          <div className="bg-white rounded-xl shadow-lg p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
+                <Target className="w-5 h-5 text-blue-600" />
+                Incolla qui i tuoi appunti:
+              </h2>
+              <button
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="flex items-center gap-2 px-3 py-1 text-sm text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+              >
+                <Settings className="w-4 h-4" />
+                {showAdvanced ? 'Nascondi' : 'Opzioni'}
+              </button>
+            </div>
+
+            {/* Opzioni Avanzate */}
+            {showAdvanced && (
+              <div className="mb-6 p-4 bg-gray-50 rounded-lg space-y-4">
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <Calendar className="inline w-4 h-4 mr-1" />
+                      Data Riunione
+                    </label>
+                    <input
+                      type="date"
+                      value={dataRiunione}
+                      onChange={(e) => setDataRiunione(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <Users className="inline w-4 h-4 mr-1" />
+                      Partecipanti
+                    </label>
+                    <input
+                      type="text"
+                      value={partecipanti}
+                      onChange={(e) => setPartecipanti(e.target.value)}
+                      placeholder="Mario Rossi, Anna Verdi..."
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Oggetto della Riunione
+                  </label>
+                  <input
+                    type="text"
+                    value={oggetto}
+                    onChange={(e) => setOggetto(e.target.value)}
+                    placeholder="Assemblea condominiale, Meeting team..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Formato Verbale
+                  </label>
+                  <select
+                    value={formatoVerbale}
+                    onChange={(e) => setFormatoVerbale(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="standard">Standard</option>
+                    <option value="formale">Formale</option>
+                    <option value="sintetico">Sintetico</option>
+                    <option value="dettagliato">Dettagliato</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            <textarea
+              ref={textareaRef}
+              value={appunti}
+              onChange={(e) => setAppunti(e.target.value)}
+              placeholder="Inserisci qui i tuoi appunti di riunione..."
+              className="w-full h-64 p-4 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            
+            <div className="flex justify-between items-center mt-4 text-sm text-gray-500">
+              <span>{appunti.length} / 10.000 caratteri</span>
+              <button
+                onClick={resetForm}
+                className="text-red-600 hover:text-red-700 font-medium"
+              >
+                Cancella tutto
+              </button>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={generaVerbale}
+                disabled={loading || !appunti.trim()}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Generazione...
+                  </>
+                ) : (
+                  'Genera Verbale'
+                )}
+              </button>
+            </div>
+
+            {/* Messaggi di stato */}
+            {error && (
+              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-red-800 font-medium">Errore</p>
+                  <p className="text-red-700 text-sm">{error}</p>
+                </div>
+              </div>
+            )}
+
+            {success && !loading && (
+              <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
+                <CheckCircle className="w-5 h-5 text-green-500" />
+                <span className="text-green-800 font-medium">Verbale generato con successo!</span>
+              </div>
+            )}
+          </div>
+
+          {/* Sezione Output */}
+          <div id="verbale-section" className="bg-white rounded-xl shadow-lg p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-semibold text-gray-800">Verbale</h2>
+              {verbale && (
+                <div className="flex gap-2">
+                  <button
+                    id="copy-btn"
+                    onClick={copiaVerbale}
+                    className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                  >
+                    <Copy className="w-4 h-4" />
+                    Copia testo
+                  </button>
+                  <button
+                    onClick={scaricaMd}
+                    className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors"
+                  >
+                    <Download className="w-4 h-4" />
+                    Scarica .md
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="bg-gray-900 rounded-lg p-4 min-h-64">
+              {verbale ? (
+                <pre className="text-gray-300 text-sm whitespace-pre-wrap font-mono overflow-x-auto">
+                  {verbale}
+                </pre>
+              ) : (
+                <div className="flex items-center justify-center h-64 text-gray-500">
+                  <div className="text-center">
+                    <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>Il verbale generato apparirà qui</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Metadati */}
+            {metadati && (
+              <div className="mt-4 p-3 bg-gray-50 rounded-lg text-xs text-gray-600">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <strong>Token utilizzati:</strong> {metadati.token_utilizzati}
+                  </div>
+                  <div>
+                    <strong>Modello:</strong> {metadati.modello_usato}
+                  </div>
+                  <div>
+                    <strong>Caratteri elaborati:</strong> {metadati.caratteri_processati}
+                  </div>
+                  <div>
+                    <strong>Formato:</strong> {metadati.formato_richiesto}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="text-center mt-8 text-gray-500 text-sm">
+          <p>Powered by AI • Trasforma i tuoi appunti in verbali professionali</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default MemoAI;
 
