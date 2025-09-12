@@ -22,14 +22,12 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <script type="text/babel">
-    const { useState, useRef } = React;
+    const { useState, useRef, useEffect } = React;
 
     const API = {
-      upload:  "/api/upload",   // rimane per creare un id “di cortesia” visuale
-      extract: "/api/extract",  // ora consuma anche dataURL
-      whisper: "/api/whisper",  // ora consuma dataURL
+      extract: "/api/extract",
+      whisper: "/api/whisper",
       format:  "/api/format",
-      cleanup: "/api/cleanup",
     };
 
     function App() {
@@ -37,8 +35,12 @@
       const [appunti, setAppunti] = useState("");
       const [verbale, setVerbale] = useState("");
       const [loading, setLoading] = useState(false);
-      const [mode, setMode] = useState("minutes"); // minutes | summary | clean | none
+      const [mode, setMode] = useState(() => localStorage.getItem("memoai_mode") || "minutes");
       const inputRef = useRef(null);
+
+      useEffect(() => {
+        try { localStorage.setItem("memoai_mode", mode); } catch {}
+      }, [mode]);
 
       const pickFiles = () => inputRef.current?.click();
 
@@ -59,7 +61,7 @@
 
         if (kind === "unknown") { alert(`Formato non supportato: ${file.name}`); return; }
 
-        // 1) leggi sempre il file come dataURL e conservalo in coda
+        // leggi sempre il file come dataURL e conservalo in coda
         const dataURL = await new Promise((resolve, reject) => {
           const fr = new FileReader();
           fr.onload = () => resolve(fr.result);
@@ -67,24 +69,9 @@
           fr.readAsDataURL(file);
         });
 
-        // 2) upload “di cortesia” per avere un id (non usiamo più /tmp per elaborare)
-        let fileId = crypto.randomUUID();
-        try {
-          const up = await fetch(API.upload, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ fileName: file.name, dataURL })
-          });
-          if (up.ok) {
-            const j = await up.json().catch(()=> ({}));
-            if (j?.fileId) fileId = j.fileId;
-          }
-        } catch {}
-
-        // 3) metti in coda includendo il dataURL
+        const fileId = crypto.randomUUID();
         setQueue(q => [...q, { id:fileId, name:file.name, type:kind, status:"caricato", dataURL }]);
 
-        // 4) se è testo locale lo appendiamo subito
         if (kind === "text") {
           const text = await file.text();
           setAppunti(prev => (prev ? prev + "\n" + text : text));
@@ -92,12 +79,11 @@
           return;
         }
 
-        // 5) se è DOCX/PDF avvia estrazione passando ANCHE dataURL
         if (kind === "doc") {
           const ex = await fetch(API.extract, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ fileId, dataURL }) // <<<<<< fondamentale
+            body: JSON.stringify({ fileId, dataURL })
           });
           let msg = "Errore estrazione testo";
           try {
@@ -114,13 +100,13 @@
         }
       };
 
-      // === trascrizione audio (usa SEMPRE dataURL dalla coda) ===
+      // === trascrizione audio ===
       const transcribe = async (item) => {
         setQueue(q => q.map(x => x.id===item.id ? ({...x, status:"trascrivo…"}) : x));
         const r = await fetch(API.whisper, {
           method:"POST",
           headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ dataURL: item.dataURL }) // <<<<<< fondamentale
+          body: JSON.stringify({ dataURL: item.dataURL })
         });
         const data = await r.json().catch(()=> ({}));
         if (!r.ok) {
@@ -132,14 +118,7 @@
         setAppunti(prev => prev + `\n---\n[Trascrizione ${item.name}]\n` + (data.text || ""));
       };
 
-      const cleanupFile = async (item) => {
-        try {
-          await fetch(API.cleanup, {
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body: JSON.stringify({ fileId:item.id })
-          });
-        } catch {}
+      const removeFile = (item) => {
         setQueue(q => q.filter(x => x.id!==item.id));
       };
 
@@ -208,9 +187,6 @@
                     <div className="text-sm">
                       <div className="font-medium">{item.name}</div>
                       <div className="text-slate-500">{item.type} · {item.status}</div>
-                      {item.status === "errore estrazione" && (
-                        <div className="text-red-500 text-xs mt-1">Estrazione fallita (PDF non testuale?).</div>
-                      )}
                     </div>
                     <div className="flex gap-2">
                       {item.type === "audio" && (
@@ -219,7 +195,7 @@
                           Trascrivi
                         </button>
                       )}
-                      <button onClick={() => cleanupFile(item)}
+                      <button onClick={() => removeFile(item)}
                         className="px-3 py-1 rounded bg-slate-100 text-sm hover:bg-slate-200">
                         Rimuovi
                       </button>
