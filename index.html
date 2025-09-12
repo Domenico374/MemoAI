@@ -33,10 +33,11 @@
     };
 
     function App() {
-      const [queue, setQueue] = useState([]);      // [{id,name,type,status}]
+      const [queue, setQueue] = useState([]);
       const [appunti, setAppunti] = useState("");
       const [verbale, setVerbale] = useState("");
       const [loading, setLoading] = useState(false);
+      const [mode, setMode] = useState("minutes"); // default
       const inputRef = useRef(null);
 
       const pickFiles = () => inputRef.current?.click();
@@ -48,7 +49,7 @@
       };
 
       const addFile = async (file) => {
-        const ext  = (file.name.split(".").pop() || "").toLowerCase();
+        const ext = (file.name.split(".").pop() || "").toLowerCase();
         const kind =
           ["txt","md"].includes(ext) ? "text" :
           ["docx","pdf"].includes(ext) ? "doc" :
@@ -57,7 +58,6 @@
 
         if (kind === "unknown") { alert(`Formato non supportato: ${file.name}`); return; }
 
-        // Carico come dataURL per semplicità (niente multipart)
         const dataURL = await new Promise((resolve, reject) => {
           const fr = new FileReader();
           fr.onload = () => resolve(fr.result);
@@ -76,7 +76,6 @@
         const { fileId } = await up.json();
         setQueue(q => [...q, { id:fileId, name:file.name, type:kind, status:"caricato" }]);
 
-        // Testo locale immediato
         if (kind === "text") {
           const text = await file.text();
           setAppunti(prev => (prev ? prev + "\n" + text : text));
@@ -84,7 +83,6 @@
           return;
         }
 
-        // DOCX/PDF → estrazione server
         if (kind === "doc") {
           const ex = await fetch(API.extract, {
             method: "POST",
@@ -94,8 +92,10 @@
           let msg = "Errore estrazione testo";
           try {
             const data = await ex.json();
-            if (!ex.ok) { alert(data.message || msg); setQueue(q => q.map(i => i.id===fileId ? {...i, status:"errore estrazione"} : i)); }
-            else {
+            if (!ex.ok) {
+              alert(data.message || msg);
+              setQueue(q => q.map(i => i.id===fileId ? {...i, status:"errore estrazione"} : i));
+            } else {
               const header = `\n---\n[Estratto ${file.name}]\n`;
               setAppunti(prev => (prev ? prev + header + data.text : data.text));
               setQueue(q => q.map(i => i.id===fileId ? {...i, status:"estratto"} : i));
@@ -103,8 +103,6 @@
           } catch { alert(msg); }
           return;
         }
-
-        // Audio → resta in coda, l’utente clicca “Trascrivi”
       };
 
       const transcribe = async (item) => {
@@ -114,13 +112,14 @@
           headers:{"Content-Type":"application/json"},
           body: JSON.stringify({ fileId: item.id })
         });
-        let err = "Errore trascrizione";
-        try {
-          const data = await r.json();
-          if (!r.ok) { alert(data.message || err); setQueue(q => q.map(x => x.id===item.id ? {...x, status:"errore trascrizione"} : x)); return; }
-          setQueue(q => q.map(x => x.id===item.id ? {...x, status:"trascritto"} : x));
-          setAppunti(prev => prev + `\n---\n[Trascrizione ${item.name}]\n` + (data.text || ""));
-        } catch { alert(err); }
+        const data = await r.json().catch(()=>({}));
+        if (!r.ok) {
+          alert(data.message || "Errore trascrizione");
+          setQueue(q => q.map(x => x.id===item.id ? {...x, status:"errore trascrizione"} : x));
+          return;
+        }
+        setQueue(q => q.map(x => x.id===item.id ? {...x, status:"trascritto"} : x));
+        setAppunti(prev => prev + `\n---\n[Trascrizione ${item.name}]\n` + (data.text || ""));
       };
 
       const cleanupFile = async (item) => {
@@ -134,21 +133,23 @@
 
       const generaVerbale = async () => {
         if (!appunti.trim()) { alert("Inserisci o trascrivi degli appunti"); return; }
+
+        // Caso "nessuna trasformazione"
+        if (mode === "none") { setVerbale(appunti); return; }
+
         setLoading(true);
         try {
           const r = await fetch(API.format, {
             method:"POST",
             headers:{"Content-Type":"application/json"},
-            body: JSON.stringify({ notes: appunti })
+            body: JSON.stringify({ notes: appunti, mode })
           });
           const data = await r.json();
           if (!r.ok) throw new Error(data.message || "Errore formattazione");
           setVerbale(data.verbale || "");
         } catch (e) {
           alert(e.message);
-        } finally {
-          setLoading(false);
-        }
+        } finally { setLoading(false); }
       };
 
       const copia = async () => {
@@ -170,6 +171,7 @@
 
       return (
         <div className="space-y-8">
+          {/* Upload */}
           <section className="bg-white rounded-2xl shadow p-5">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold">Upload file</h2>
@@ -196,9 +198,6 @@
                     <div className="text-sm">
                       <div className="font-medium">{item.name}</div>
                       <div className="text-slate-500">{item.type} · {item.status}</div>
-                      {item.status === "errore estrazione" && (
-                        <div className="text-red-500 text-xs mt-1">Estrazione fallita (PDF non testuale?).</div>
-                      )}
                     </div>
                     <div className="flex gap-2">
                       {item.type === "audio" && (
@@ -219,6 +218,7 @@
             </ul>
           </section>
 
+          {/* Appunti */}
           <section className="bg-white rounded-2xl shadow p-5">
             <h2 className="text-lg font-semibold mb-2">Appunti</h2>
             <textarea
@@ -228,10 +228,19 @@
               className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Incolla note o usa la trascrizione/estrazione file..."
             ></textarea>
-            <div className="mt-3 flex gap-2">
+
+            <div className="mt-3 flex gap-2 items-center">
+              <select value={mode} onChange={e=>setMode(e.target.value)}
+                className="px-3 py-2 border rounded-lg text-sm">
+                <option value="minutes">Genera verbale</option>
+                <option value="summary">Riepilogo breve</option>
+                <option value="clean">Solo pulizia testo</option>
+                <option value="none">Nessuna trasformazione</option>
+              </select>
+
               <button onClick={generaVerbale} disabled={loading}
                 className="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60">
-                {loading ? "Genero…" : "Genera verbale"}
+                {loading ? "Genero…" : "Genera"}
               </button>
               <button onClick={resetAll}
                 className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200">
@@ -240,9 +249,10 @@
             </div>
           </section>
 
+          {/* Verbale */}
           <section className="bg-white rounded-2xl shadow p-5">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Verbale</h2>
+              <h2 className="text-lg font-semibold">Risultato</h2>
               <div className="flex gap-2">
                 <button onClick={copia} disabled={!verbale}
                   className="px-3 py-2 rounded bg-slate-100 text-sm">Copia</button>
