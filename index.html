@@ -208,3 +208,79 @@
                     <div className="text-sm">
                       <div className="font-medium">{item.name}</div>
                       <div className="text-slate-500">{item.type} · {item.status}</div>
+                      {item.status === "errore estrazione" && (
+                        <div className="text-red-500 text-xs mt-1">Estrazione fallita (PDF non testuale?).</div>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      {item.type === "audio" && (
+                        <button onClick={() => transcribe(item)}
+                          className="px-3 py-1 rounded bg-blue-600 text-white text-sm">
+                          Trascrivi
+                        </button>
+                      )}
+                      <button onClick={() => cleanupFile(item)}
+                        className="px-3 py-1 rounded bg-slate-100 text-sm hover:bg-slate-200">
+                        Rimuovi
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              ))}
+              {queue.length === 0 && <li className="text-sm text-slate-500">Nessun file in coda.</li>}
+            </ul>
+          </section>
+
+          {/* Appunti */}
+          <section className="bg-white rounded-2xl shadow p-5">
+            <h2 className="text-lg font-semibold mb-2">Appunti</h2>
+            <textarea
+              rows="8"
+              value={appunti}
+              onChange={e => setAppunti(e.target.value)}
+              className="w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Incolla note o usa la trascrizione/estrazione file..."
+            ></textarea>
+
+            <div className="mt-3 flex gap-2 items-center">
+              <select value={mode} onChange={e=>setMode(e.target.value)}
+                className="px-3 py-2 border rounded-lg text-sm">
+                <option value="minutes">Genera verbale</option>
+                <option value="summary">Riepilogo breve</option>
+                <option value="clean">Solo pulizia testo</option>
+                <option value="none">Nessuna trasformazione</option>
+              </select>
+
+              <button onClick={genera} disabled={loading}
+                className="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60">
+                {loading ? "Genero…" : "Genera"}
+              </button>
+              <button onClick={resetAll}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200">
+                Reset
+              </button>
+            </div>
+          </section>
+
+          {/* Risultato */}
+          <section className="bg-white rounded-2xl shadow p-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Risultato</h2>
+              <div className="flex gap-2">
+                <button onClick={copia} disabled={!verbale}
+                  className="px-3 py-2 rounded bg-slate-100 text-sm">Copia</button>
+                <button onClick={scarica} disabled={!verbale}
+                  className="px-3 py-2 rounded bg-slate-100 text-sm">Scarica .md</button>
+              </div>
+            </div>
+            <pre className="mt-3 whitespace-pre-wrap text-sm leading-6">{verbale || "—"}</pre>
+          </section>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
+</body>
+</html>
