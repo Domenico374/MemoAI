@@ -11,6 +11,26 @@ function parseDataURL(dataURL) {
   return { mime: m[1], buffer: Buffer.from(m[2], "base64") };
 }
 
+// Costruisce in modo robusto un File con nome e mime (Node 20/22 ha File globale)
+function makeFile(buffer, fileName = "audio.mp3", mime = "audio/mpeg") {
+  try {
+    return new File([buffer], fileName, { type: mime });
+  } catch {
+    // fallback estremo: prova Blob (alcune versioni potrebbero funzionare ugualmente)
+    return new Blob([buffer], { type: mime });
+  }
+}
+
+async function transcribeWith(model, file) {
+  // NB: alcune versioni ignorano "language", ma non fa male provarlo
+  return openai.audio.transcriptions.create({
+    file,
+    model,
+    // language: "it",
+    // prompt: "Registrazione in italiano di una riunione.",
+  });
+}
+
 export default async function handler(req, res) {
   // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -26,7 +46,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ message: "OPENAI_API_KEY mancante" });
     }
 
-    const { dataURL, fileName, language = "it" } = req.body || {};
+    const { dataURL, fileName } = req.body || {};
     if (!dataURL) {
       return res.status(400).json({
         message: "dataURL mancante",
@@ -54,7 +74,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // Controllo di massima sul MIME
+    // verifica MIME audio
     const isAudioMime = /^audio\//i.test(mime) || /(mpeg|mp3|wav|ogg|webm|m4a)/i.test(mime);
     if (!isAudioMime) {
       return res.status(400).json({
@@ -63,22 +83,34 @@ export default async function handler(req, res) {
       });
     }
 
-    // Node 18+/20+ ha Blob nativo
-    const blob = new Blob([buffer], { type: mime });
+    // crea un File "vero" con nome e mime
+    const safeName = (fileName && String(fileName)) || `audio.${(mime.split("/")[1] || "mp3")}`;
+    const file = makeFile(buffer, safeName, mime);
 
-    // Puoi usare anche "whisper-1"
-    const model = "gpt-4o-mini-transcribe";
+    // primo tentativo: modello nuovo
+    const preferredModel = "gpt-4o-mini-transcribe";
+    const fallbackModel = "whisper-1";
 
-    // Opzionale: hint lingua (non sempre rispettato ma aiuta)
-    const response = await openai.audio.transcriptions.create({
-      file: blob,
-      model,
-      // language: language, // alcune versioni ignorano il parametro, ma non fa male lasciarlo commentato
-      // prompt: "Audio di una riunione in italiano sul progetto Memo AI.", // opzionale per aiutare il modello
-    });
+    let response, usedModel = preferredModel;
+    try {
+      response = await transcribeWith(preferredModel, file);
+    } catch (e) {
+      const msg = e?.message || "";
+      // Se il modello non è disponibile/permitted, prova whisper-1
+      if (/not found|unknown model|unsupported model|does not exist|404/i.test(msg)) {
+        try {
+          usedModel = fallbackModel;
+          response = await transcribeWith(fallbackModel, file);
+        } catch (e2) {
+          const m2 = e2?.message || "Errore trascrizione (fallback whisper-1)";
+          return res.status(500).json({ message: "Errore trascrizione", detail: m2 });
+        }
+      } else {
+        return res.status(500).json({ message: "Errore trascrizione", detail: msg });
+      }
+    }
 
     const text = (response?.text || "").trim();
-
     if (!text) {
       return res.status(422).json({
         message: "Trascrizione vuota",
@@ -90,16 +122,15 @@ export default async function handler(req, res) {
       ok: true,
       text,
       meta: {
-        model,
+        model: usedModel,
         mime,
         size: buffer.length,
-        fileName: fileName || null
+        fileName: safeName
       }
     });
+
   } catch (e) {
     console.error("whisper error:", e);
-
-    // Errori OpenAI comuni con messaggi chiari
     const msg = e?.message || "Errore trascrizione";
     if (/insufficient_quota/i.test(msg)) {
       return res.status(402).json({ message: "Quota OpenAI esaurita" });
@@ -107,10 +138,9 @@ export default async function handler(req, res) {
     if (/invalid_api_key|authentication/i.test(msg)) {
       return res.status(401).json({ message: "Chiave API non valida" });
     }
-    if (/rate.limit|too.many.requests/i.test(msg)) {
+    if (/rate.?limit|too many requests/i.test(msg)) {
       return res.status(429).json({ message: "Rate limit superato. Riprova tra poco." });
     }
-
     return res.status(500).json({ message: "Errore trascrizione", detail: msg });
   }
 }
