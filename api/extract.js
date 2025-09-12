@@ -1,10 +1,9 @@
 // api/extract.js
 import * as mammoth from "mammoth";
-import pdfParse from "pdf-parse";
+import pdfParse from "pdf-parse/lib/pdf-parse.js"; // << fix: usa la lib vera
 
 const MAX_BYTES = 24 * 1024 * 1024; // 24 MB
 
-// Pulizia minima del testo
 function normalizeText(s = "") {
   return String(s)
     .replace(/\u0000/g, "")
@@ -13,7 +12,6 @@ function normalizeText(s = "") {
     .trim();
 }
 
-// data:<mime>;base64,<payload> -> { mime, buffer }
 function parseDataURL(dataURL) {
   const m = /^data:([^;]+);base64,(.+)$/s.exec(dataURL || "");
   if (!m) return null;
@@ -21,7 +19,6 @@ function parseDataURL(dataURL) {
 }
 
 export default async function handler(req, res) {
-  // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -35,7 +32,7 @@ export default async function handler(req, res) {
     if (!dataURL) {
       return res.status(400).json({
         message: "dataURL mancante",
-        detail: "Invia il file in Base64 come data:<mime>;base64,<payload>"
+        detail: "Invia il file come data:<mime>;base64,<payload>"
       });
     }
 
@@ -59,7 +56,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // Deduzione estensione: 1) fileName  2) fileId  3) MIME
+    // estensione da fileName/fileId/mime
     const name = (fileName || fileId || "").toLowerCase();
     let ext = name.includes(".") ? name.split(".").pop() : "";
     if (!ext || !/^[a-z0-9]+$/.test(ext)) {
@@ -71,22 +68,18 @@ export default async function handler(req, res) {
 
     let text = "";
 
-    // --- DOCX ---
+    // DOCX
     if (ext === "docx" || mime.includes("wordprocessingml")) {
       try {
-        // mammoth preferisce un vero Buffer Node
         const buf2 = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
         const result = await mammoth.extractRawText({ buffer: buf2 });
         text = result?.value || "";
       } catch (e) {
         console.error("mammoth error:", e);
-        return res.status(500).json({
-          message: "Errore estrazione DOCX",
-          detail: e?.message || "mammoth non è riuscito a leggere il file"
-        });
+        return res.status(500).json({ message: "Errore estrazione DOCX", detail: e.message });
       }
     }
-    // --- PDF (solo testuali) ---
+    // PDF testuali
     else if (ext === "pdf" || mime.includes("pdf")) {
       try {
         const r = await pdfParse(buffer);
@@ -105,11 +98,11 @@ export default async function handler(req, res) {
         });
       }
     }
-    // --- TXT / MD ---
+    // TXT/MD
     else if (ext === "md" || ext === "txt" || mime.includes("text")) {
       text = buffer.toString("utf-8");
     }
-    // --- Non supportato ---
+    // Non supportato
     else {
       return res.status(400).json({
         message: "Estensione/MIME non supportati",
@@ -120,17 +113,10 @@ export default async function handler(req, res) {
 
     text = normalizeText(text);
     if (!text) {
-      return res.status(422).json({
-        message: "Testo vuoto dopo l'estrazione",
-        detail: "Il file è stato letto ma non contiene testo utile."
-      });
+      return res.status(422).json({ message: "Testo vuoto dopo l'estrazione" });
     }
 
-    return res.status(200).json({
-      ok: true,
-      text,
-      meta: { mime, ext, size: buffer.length }
-    });
+    return res.status(200).json({ ok: true, text, meta: { mime, ext, size: buffer.length } });
   } catch (e) {
     console.error("extract fatal error:", e);
     return res.status(500).json({ message: "Errore estrazione testo", detail: e.message });
