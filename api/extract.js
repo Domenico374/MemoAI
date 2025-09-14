@@ -1,8 +1,8 @@
 // api/extract.js
 import * as mammoth from "mammoth";
-import pdfParse from "pdf-parse/lib/pdf-parse.js"; // usare la build giusta
+import pdfParse from "pdf-parse/lib/pdf-parse.js";
 
-const MAX_BYTES = 24 * 1024 * 1024; // 24 MB
+const MAX_BYTES = 120 * 1024 * 1024; // 120 MB
 
 function normalizeText(s = "") {
   return String(s)
@@ -12,25 +12,14 @@ function normalizeText(s = "") {
     .trim();
 }
 
-// decode minimale per entità HTML comuni + numeriche
 function decodeEntities(s = "") {
-  const basic = {
-    "&nbsp;": " ",
-    "&amp;": "&",
-    "&lt;": "<",
-    "&gt;": ">",
-    "&quot;": '"',
-    "&#39;": "'",
-  };
+  const basic = { "&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'" };
   s = s.replace(/(&nbsp;|&amp;|&lt;|&gt;|&quot;|&#39;)/g, m => basic[m] || m);
-  // &#xHH; esadecimali
   s = s.replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
-  // &#DD; decimali
   s = s.replace(/&#(\d+);/g, (_, d) => String.fromCharCode(parseInt(d, 10)));
   return s;
 }
 
-// HTML -> testo semplice
 function htmlToText(html = "") {
   return normalizeText(
     decodeEntities(
@@ -47,15 +36,20 @@ function htmlToText(html = "") {
   );
 }
 
-// data:<mime>;base64,<payload>
 function parseDataURL(dataURL) {
   const m = /^data:([^;]+);base64,(.+)$/s.exec(dataURL || "");
   if (!m) return null;
   return { mime: m[1], buffer: Buffer.from(m[2], "base64") };
 }
 
+async function fetchFileBuffer(fileUrl) {
+  const resp = await fetch(fileUrl);
+  if (!resp.ok) throw new Error(`Download fallito (${resp.status})`);
+  const ab = await resp.arrayBuffer();
+  return Buffer.from(ab);
+}
+
 export default async function handler(req, res) {
-  // CORS
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -65,96 +59,75 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ message: "POST only" });
 
   try {
-    const { dataURL, fileId, fileName } = req.body || {};
-    if (!dataURL) {
-      return res.status(400).json({
-        message: "dataURL mancante",
-        detail: "Invia il file come data:<mime>;base64,<payload>",
-      });
+    const { dataURL, fileId, fileName, fileUrl } = req.body || {};
+    let buffer, mime, ext;
+
+    // --- 1) fileUrl (Blob/S3) ---
+    if (fileUrl) {
+      buffer = await fetchFileBuffer(fileUrl);
+      try {
+        mime = (await fetch(fileUrl, { method: "HEAD" })).headers.get("content-type") || "";
+      } catch {}
+      const name = (fileName || fileId || fileUrl).toLowerCase();
+      ext = name.includes(".") ? name.split(".").pop() : "";
+    }
+    // --- 2) dataURL ---
+    else if (dataURL) {
+      const parsed = parseDataURL(dataURL);
+      if (!parsed) {
+        return res.status(400).json({ message: "dataURL non valido", detail: "Formato atteso: data:<mime>;base64,<payload>" });
+      }
+      mime = parsed.mime;
+      buffer = parsed.buffer;
+      const name = (fileName || fileId || "").toLowerCase();
+      ext = name.includes(".") ? name.split(".").pop() : "";
+    } else {
+      return res.status(400).json({ message: "Fornisci fileUrl o dataURL" });
     }
 
-    const parsed = parseDataURL(dataURL);
-    if (!parsed) {
-      return res.status(400).json({
-        message: "dataURL non valido",
-        detail: "Formato atteso: data:<mime>;base64,<payload>",
-      });
-    }
-
-    let { mime, buffer } = parsed;
-
-    if (!buffer?.length) {
-      return res.status(400).json({ message: "Buffer vuoto", detail: "Payload Base64 decodificato vuoto." });
-    }
+    if (!buffer?.length) return res.status(400).json({ message: "Buffer vuoto" });
     if (buffer.length > MAX_BYTES) {
-      return res.status(413).json({
-        message: "File troppo grande",
-        detail: `Limite: ${MAX_BYTES / (1024 * 1024)} MB`,
-      });
+      return res.status(413).json({ message: "File troppo grande", detail: `Limite: ${MAX_BYTES / (1024 * 1024)} MB` });
     }
 
-    // Estensione da fileName/fileId/mime
-    const name = (fileName || fileId || "").toLowerCase();
-    let ext = name.includes(".") ? name.split(".").pop() : "";
-    if (!ext || !/^[a-z0-9]+$/.test(ext)) {
-      if (mime.includes("word")) ext = "docx";
-      else if (mime.includes("pdf")) ext = "pdf";
-      else if (mime.includes("markdown")) ext = "md";
-      else if (mime.includes("text")) ext = "txt";
+    // deduci ext se mancante
+    if (!ext) {
+      if ((mime || "").includes("word")) ext = "docx";
+      else if ((mime || "").includes("pdf")) ext = "pdf";
+      else if ((mime || "").includes("markdown")) ext = "md";
+      else if ((mime || "").includes("text")) ext = "txt";
     }
 
     let text = "";
 
     // --- DOCX ---
     if (ext === "docx" || mime.includes("wordprocessingml")) {
+      const buf2 = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
       try {
-        const buf2 = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
-
-        // 1) tentativo: testo raw
         const raw = await mammoth.extractRawText({ buffer: buf2 });
         text = raw?.value || "";
-
-        // 2) fallback: HTML -> testo (se raw è vuoto o troppo corto)
         if (!text || text.trim().length < 5) {
           const htmlRes = await mammoth.convertToHtml({ buffer: buf2 });
-          const html = htmlRes?.value || "";
-          const fallbackText = htmlToText(html);
-          if (fallbackText && fallbackText.trim()) {
-            text = fallbackText;
-          }
+          const fallbackText = htmlToText(htmlRes?.value || "");
+          if (fallbackText) text = fallbackText;
         }
-
-        if (!text || !text.trim()) {
-          return res.status(422).json({
-            message: "DOCX senza testo estraibile",
-            detail: "Il documento sembra contenere solo immagini o testo non standard. Prova a esportare come PDF con testo selezionabile o a copiare/incollare il testo.",
-          });
+        if (!text) {
+          return res.status(422).json({ message: "DOCX senza testo estraibile", detail: "Contiene solo immagini o testo non standard" });
         }
       } catch (e) {
-        console.error("mammoth error:", e);
-        return res.status(500).json({
-          message: "Errore estrazione DOCX",
-          detail: e?.message || "mammoth non è riuscito a leggere il file",
-        });
+        return res.status(500).json({ message: "Errore estrazione DOCX", detail: e.message });
       }
     }
-    // --- PDF (solo testuali) ---
+    // --- PDF ---
     else if (ext === "pdf" || mime.includes("pdf")) {
       try {
         const r = await pdfParse(buffer);
         text = r?.text || "";
       } catch (e) {
-        console.error("pdf-parse error:", e);
-        return res.status(415).json({
-          message: "PDF non testuale o protetto",
-          detail: "Impossibile leggerlo con pdf-parse. Probabile scansione/immagini.",
-        });
+        return res.status(415).json({ message: "PDF non testuale o protetto", detail: "Probabile scansione/immagini" });
       }
       if (!text.trim()) {
-        return res.status(422).json({
-          message: "PDF senza testo estraibile",
-          detail: "Il PDF sembra una scansione (solo immagini). Serve OCR.",
-        });
+        return res.status(422).json({ message: "PDF senza testo estraibile", detail: "Il PDF sembra una scansione. Serve OCR." });
       }
     }
     // --- TXT / MD ---
@@ -172,10 +145,7 @@ export default async function handler(req, res) {
 
     text = normalizeText(text);
     if (!text) {
-      return res.status(422).json({
-        message: "Testo vuoto dopo l'estrazione",
-        detail: "Il file è stato letto ma non contiene testo utile.",
-      });
+      return res.status(422).json({ message: "Testo vuoto dopo estrazione" });
     }
 
     return res.status(200).json({ ok: true, text, meta: { mime, ext, size: buffer.length } });
