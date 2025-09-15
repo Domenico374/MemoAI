@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Memo AI</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- NEW: Mammoth per .docx lato client -->
+  <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
   <style>
     body { background:#f5f7fb }
   </style>
@@ -39,6 +41,18 @@
       <input id="uploader" type="file" multiple
              accept=".txt,.md,.pdf,.docx,.mp3,.m4a,.wav,.ogg,.webm"
              class="hidden" />
+    </section>
+
+    <!-- NEW: Anteprima immediata del file caricato -->
+    <section class="bg-white rounded-2xl shadow p-5 mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold">Anteprima</h2>
+        <button id="btnClearPreview" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Pulisci anteprima</button>
+      </div>
+      <div id="preview"
+           class="prose max-w-none border border-slate-200 rounded-xl p-4 bg-slate-50 text-sm">
+        <p class="text-slate-500">L’anteprima comparirà qui…</p>
+      </div>
     </section>
 
     <!-- Appunti -->
@@ -77,6 +91,7 @@
     // ---------- helpers UI ----------
     const $ = (s) => document.querySelector(s);
     const queueEl = $('#queue');
+    const previewEl = $('#preview');
     const log = (...a) => console.log('[MemoAI]', ...a);
 
     function addQueueRow(name, meta, status) {
@@ -101,8 +116,15 @@
 
     function appendToNotes(header, text) {
       const ta = $('#notes');
-      const section = (header ? `\[${header}\]\n` : '') + (text || '');
+      const section = (header ? `[${header}]\n` : '') + (text || '');
       ta.value = (ta.value ? ta.value + '\n---\n' : '') + section;
+    }
+
+    function setPreviewHTML(html) {
+      previewEl.innerHTML = html || `<p class="text-slate-500">L’anteprima comparirà qui…</p>`;
+    }
+    function escapeHTML(s='') {
+      return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
     }
 
     // ---------- health check (blob-url & extract) ----------
@@ -132,156 +154,3 @@
       if (!j.uploadUrl) throw new Error('uploadUrl mancante');
       return j.uploadUrl;
     }
-
-    async function uploadToBlob(uploadUrl, file) {
-      const fd = new FormData();
-      fd.append('file', file, file.name || 'file');
-      const r = await fetch(uploadUrl, { method: 'POST', body: fd });
-      // endpoint /api/upload (o /api/echo per test) deve rispondere { ok, url, fileId?, size? }
-      const j = await r.json().catch(()=> ({}));
-      if (!r.ok || !j?.url) throw new Error(j?.message || 'Upload fallito');
-      return j.url;
-    }
-
-    async function extractWithUrl(blobUrl) {
-      const r = await fetch('/api/extract-data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: blobUrl })
-      });
-      const j = await r.json().catch(()=> ({}));
-      if (!r.ok || !j?.ok) throw new Error(j?.message || 'Errore estrazione');
-      return j.text || '';
-    }
-
-    async function transcribeWithUrl(blobUrl) {
-      const r = await fetch('/api/whisper', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: blobUrl })
-      });
-      const j = await r.json().catch(()=> ({}));
-      if (!r.ok || !j?.ok) throw new Error(j?.message || 'Errore trascrizione');
-      return j.text || '';
-    }
-
-    async function handleFiles(files) {
-      for (const file of files) {
-        const name = file.name || 'file';
-        const ext  = (name.split('.').pop() || '').toLowerCase();
-        const meta = `${file.type || '(sconosciuto)'} · ${new Intl.NumberFormat('it-IT').format(file.size)} B`;
-        const li = addQueueRow(name, meta, 'in coda…');
-
-        try {
-          const isText  = ['txt','md'].includes(ext);
-          const isDoc   = ['pdf','docx'].includes(ext);
-          const isAudio = ['mp3','m4a','wav','ogg','webm'].includes(ext);
-
-          // Testo locale
-          if (isText) {
-            setRowStatus(li, 'lettura locale…');
-            const t = await file.text();
-            appendToNotes(`Testo locale: ${name}`, t);
-            setRowStatus(li, 'aggiunto agli appunti');
-            continue;
-          }
-
-          setRowStatus(li, 'richiesta uploadUrl…');
-          const uploadUrl = await getUploadUrl();
-
-          setRowStatus(li, 'upload…');
-          const blobUrl = await uploadToBlob(uploadUrl, file);
-          log('Blob URL:', blobUrl);
-
-          if (isDoc) {
-            setRowStatus(li, 'estrazione testo…');
-            const text = await extractWithUrl(blobUrl);
-            appendToNotes(`Estratto: ${name}`, text);
-            setRowStatus(li, 'estratto');
-            continue;
-          }
-
-          if (isAudio) {
-            setRowStatus(li, 'trascrizione…');
-            const text = await transcribeWithUrl(blobUrl);
-            appendToNotes(`Trascrizione: ${name}`, text);
-            setRowStatus(li, 'trascritto');
-            continue;
-          }
-
-          setRowStatus(li, 'formato non supportato', true);
-        } catch (e) {
-          console.error(e);
-          setRowStatus(li, e.message || 'errore', true);
-          alert(`${name}: ${e.message || 'Errore'}`);
-        }
-      }
-
-      // reset input per poter ricaricare gli stessi file
-      $('#uploader').value = '';
-    }
-
-    // ---------- Genera verbale ----------
-    async function generateMinutes() {
-      const notes = $('#notes').value.trim();
-      if (!notes) { alert('Inserisci o carica degli appunti prima.'); return; }
-
-      const btn = $('#btnGenerate');
-      btn.disabled = true; btn.textContent = 'Genero…';
-
-      try {
-        const r = await fetch('/api/format', {
-          method:'POST',
-          headers:{ 'Content-Type':'application/json' },
-          body: JSON.stringify({ notes })
-        });
-        const j = await r.json().catch(()=> ({}));
-        if (!r.ok) throw new Error(j?.message || 'Errore formattazione');
-        $('#result').textContent = j.verbale || '(vuoto)';
-      } catch (e) {
-        alert(e.message || 'Errore generazione');
-      } finally {
-        btn.disabled = false; btn.textContent = 'Genera verbale';
-      }
-    }
-
-    // ---------- Azioni UI ----------
-    $('#btnUpload').addEventListener('click', () => $('#uploader').click());
-    $('#uploader').addEventListener('change', (e) => {
-      const files = Array.from(e.target.files || []);
-      if (files.length) handleFiles(files);
-    });
-
-    $('#btnGenerate').addEventListener('click', generateMinutes);
-
-    $('#btnReset').addEventListener('click', () => {
-      $('#notes').value = '';
-      $('#result').textContent = 'Il verbale comparirà qui…';
-      clearQueue();
-    });
-
-    $('#btnCopy').addEventListener('click', async () => {
-      const t = $('#result').textContent;
-      if (!t || t.startsWith('Il verbale')) return;
-      try { await navigator.clipboard.writeText(t); alert('Copiato!'); }
-      catch { alert('Impossibile copiare'); }
-    });
-
-    $('#btnDownload').addEventListener('click', () => {
-      const t = $('#result').textContent;
-      if (!t || t.startsWith('Il verbale')) return;
-      const blob = new Blob([t], { type: 'text/markdown;charset=utf-8' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `verbale_${new Date().toISOString().split('T')[0]}.md`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(a.href);
-    });
-
-    // avvio
-    health();
-  </script>
-</body>
-</html>
