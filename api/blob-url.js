@@ -1,9 +1,22 @@
-// api/blob-url.js — test di route
-export const runtime = 'edge';
+// api/blob-url.js — test route (Node runtime)
+export default async function handler(req, res) {
+  if (req.method === 'GET') {
+    res.status(200).json({
+      ok: true,
+      route: '/api/blob-url',
+      now: Date.now(),
+      runtime: 'node'
+    });
+    return;
+  }
 
-export default async function handler() {
-  return new Response(
-    JSON.stringify({ ok: true, now: Date.now() }),
-    { headers: { 'content-type': 'application/json' }, status: 200 }
-  );
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.status(204).end();
+    return;
+  }
+
+  res.status(405).json({ error: 'Method not allowed' });
 }
