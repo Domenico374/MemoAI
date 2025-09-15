@@ -10,7 +10,7 @@
   <!-- PDF preview (render first page) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script>
-    // Configura PDF.js (worker obbligatorio per il rendering)
+    /* Configura PDF.js (worker obbligatorio per il rendering) */
     window.pdfjsLib = window.pdfjsLib || window['pdfjs-dist/build/pdf'];
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
@@ -71,7 +71,7 @@
         placeholder="Appunti trascritti o estratti…"></textarea>
 
       <div class="mt-4 flex flex-wrap gap-2">
-        <!-- NUOVI pulsanti rapidi -->
+        <!-- Pulsanti rapidi -->
         <button id="btnClean"
           class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Pulizia</button>
         <button id="btnMinutesAI"
@@ -79,7 +79,7 @@
         <button id="btnTranscribe"
           class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Trascrizione</button>
 
-        <!-- Tieni anche il bottone storico -->
+        <!-- Storico -->
         <button id="btnGenerate"
           class="px-3 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700">
           Genera verbale
@@ -88,6 +88,38 @@
           class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">
           Resettare
         </button>
+      </div>
+    </section>
+
+    <!-- Analisi intelligente -->
+    <section class="bg-white rounded-2xl shadow p-5 mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold">Analisi intelligente</h2>
+        <div class="flex flex-wrap gap-2">
+          <button id="btnSummarize"   class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Riassunto</button>
+          <button id="btnHighlights"  class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Punti salienti</button>
+          <button id="btnTodos"       class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">To-Do</button>
+          <button id="btnSuggestTags" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Suggerisci tag</button>
+        </div>
+      </div>
+
+      <div class="grid gap-4 md:grid-cols-2">
+        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
+          <h3 class="font-medium mb-2">Riassunto</h3>
+          <div id="summaryBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
+        </div>
+        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
+          <h3 class="font-medium mb-2">Punti salienti</h3>
+          <div id="highlightsBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
+        </div>
+        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
+          <h3 class="font-medium mb-2">To-Do</h3>
+          <div id="todoBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
+        </div>
+        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
+          <h3 class="font-medium mb-2">Tag suggeriti</h3>
+          <div id="tagsBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
+        </div>
       </div>
     </section>
 
@@ -184,7 +216,7 @@
       return j.url;
     }
     async function extractWithUrl(blobUrl, name) {
-      // non usata per PDF (per essi usiamo dataURL), utile se in futuro vorrai blob
+      // Non usata per PDF (per essi usiamo dataURL), utile in futuro se avrai un vero blob server.
       const r = await fetch('/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -205,7 +237,7 @@
       return j.text || '';
     }
 
-    /* ---------- Fallback locali per i pulsanti rapidi ---------- */
+    /* ---------- Fallback locali (pulsanti rapidi) ---------- */
     function cleanText(t="") {
       return t.replace(/\r/g,"")
         .replace(/[ \t]+\n/g,"\n")
@@ -277,6 +309,120 @@
       } finally {
         disable(false);
       }
+    }
+
+    /* ---------- NLP leggera client-side (Analisi intelligente) ---------- */
+    function splitSentences(t="") {
+      return t
+        .replace(/\s+/g, " ")
+        .split(/(?<=[\.\?\!])\s+(?=[A-ZÀ-Ú])/g)
+        .map(s => s.trim())
+        .filter(Boolean);
+    }
+    function summarizeText(t="", maxSentences=5) {
+      const cues = [
+        "decisione","decide","delibera","approva","stabilisce","si conviene",
+        "scadenza","entro","termine","deadline","consegna",
+        "responsabile","incarica","assegnato","owner",
+        "bilancio","budget","priorità","urgente","importante"
+      ];
+      const sents = splitSentences(cleanText(t));
+      if (!sents.length) return "";
+      const scores = sents.map((s,i) => {
+        const lc = s.toLowerCase();
+        const cueScore = cues.reduce((acc,w)=> acc + (lc.includes(w)?1:0), 0);
+        const posScore = (i===0?1:0) + (i===sents.length-1?0.5:0);
+        const lenScore = Math.min(s.length/120, 1);
+        return { s, score: cueScore*2 + posScore + lenScore*0.5 };
+      });
+      scores.sort((a,b)=> b.score - a.score);
+      return scores.slice(0, maxSentences).map(x=>x.s).join(" ");
+    }
+    function extractHighlights(t="") {
+      const txt = cleanText(t);
+      const decisions = [];
+      const deadlines = [];
+      const owners = [];
+      const lines = txt.split("\n").map(l=>l.trim()).filter(Boolean);
+      const reDate = /\b(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}|(?:\d{1,2}\s+(?:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-z]*\s+\d{4}))\b/gi;
+
+      for (const l of lines) {
+        const ll = l.toLowerCase();
+        if (/(delibera|si decide|si stabilisce|si approva|viene approvato|si conviene)/i.test(ll)) {
+          decisions.push(l);
+        }
+        if (/(entro|scadenza|termine|deadline|entro e non oltre|per il|entro il)/i.test(ll)) {
+          const dateMatch = l.match(reDate)?.[0] || "";
+          deadlines.push(dateMatch ? `${l} (data: ${dateMatch})` : l);
+        }
+        const m1 = l.match(/responsabile\s*:\s*(.+)$/i);
+        const m2 = l.match(/a cura di\s+(.+)$/i);
+        const m3 = l.match(/si incarica\s+([A-ZÀ-Ú][A-Za-zÀ-ÿ'’\- ]+)\s+di/i);
+        const m4 = l.match(/assegnat[oa]\s+a\s+([A-ZÀ-Ú][A-Za-zÀ-ÿ'’\- ]+)/i);
+        if (m1) owners.push(m1[1].trim());
+        else if (m2) owners.push(m2[1].trim());
+        else if (m3) owners.push(m3[1].trim());
+        else if (m4) owners.push(m4[1].trim());
+      }
+      return {
+        decisions: [...new Set(decisions)],
+        deadlines: [...new Set(deadlines)],
+        owners:    [...new Set(owners)],
+      };
+    }
+    function extractActions(t="") {
+      const txt = cleanText(t);
+      const lines = txt.split("\n").map(l=>l.trim()).filter(Boolean);
+      const verbs = /(inviare|invia|preparare|prepara|contattare|contatta|verificare|verifica|aggiornare|aggiorna|convocare|convoca|pagare|paga|richiedere|richiede|redigere|redigi|prenotare|prenota|organizzare|organizza|acquistare|acquista|fare|fai|eseguire|esegue)/i;
+      const reDate = /\b(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}|(?:\d{1,2}\s+(?:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-z]*\s+\d{4}))\b/gi;
+
+      const items = [];
+      for (const l of lines) {
+        if (l.startsWith("-") || l.startsWith("•") || verbs.test(l)) {
+          const due = l.match(reDate)?.[0] || (/(entro|deadline|scadenza|termine)/i.test(l) ? "entro (data da definire)" : "");
+          const owner = (l.match(/(?:da|a|per)\s+([A-ZÀ-Ú][A-Za-zÀ-ÿ'’\- ]+)\b/)||[])[1] ||
+                        (l.match(/(?:responsabile|assegnat[oa])\s*:\s*([A-ZÀ-Ú][A-Za-zÀ-ÿ'’\- ]+)/i)||[])[1] || "";
+          items.push({
+            task: l.replace(/^[\-\•]\s*/, ""),
+            owner: owner || null,
+            due: due   || null
+          });
+        }
+      }
+      const seen = new Set();
+      return items.filter(it => {
+        const k = `${it.task}|${it.owner||""}|${it.due||""}`.toLowerCase();
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+    }
+    function suggestTags(t="") {
+      const lc = t.toLowerCase();
+      const TAGS = {
+        Bilancio: ["bilancio","consuntivo","preventivo","spese","budget","quote","riparto"],
+        Lavori:   ["lavori","manutenzione","appalto","impresa","cantiere","capitolato"],
+        Convocazione: ["convocazione","ordine del giorno","odg","assemblea","verbale"],
+        Fornitori: ["fornitore","fornitori","preventivo","offerta","contratto","fattura"],
+        Sicurezza: ["sicurezza","incendio","impianto","adeguamento","certificazione"],
+        Pagamenti: ["pagare","pagamento","mav","bonifico","morosità","sollecito"],
+      };
+      const out = [];
+      for (const [tag, kws] of Object.entries(TAGS)) {
+        if (kws.some(k => lc.includes(k))) out.push(tag);
+      }
+      return out.length ? out : ["Generale"];
+    }
+    function renderList(el, arr, bullet="- ") {
+      el.textContent = arr?.length ? arr.map(x=> bullet + x).join("\n") : "—";
+    }
+    function renderTodos(el, items) {
+      if (!items?.length) { el.textContent = "—"; return; }
+      el.textContent = items.map(it => {
+        const who = it.owner ? ` [${it.owner}]` : "";
+        const due = it.due ? ` (scad.: ${it.due})` : "";
+        return `□ ${it.task}${who}${due}`;
+      }).join("\n");
     }
 
     /* ---------- Fallback: testo PDF locale ---------- */
@@ -401,77 +547,3 @@
           alert(`${name}: ${e.message || 'Errore'}`);
         }
       }
-      $('#uploader').value = '';
-    }
-
-    /* ---------- Genera verbale (storico) ---------- */
-    async function generateMinutes() {
-      const notes = $('#notes').value.trim();
-      if (!notes) { alert('Inserisci o carica degli appunti prima.'); return; }
-
-      const btn = $('#btnGenerate');
-      btn.disabled = true; btn.textContent = 'Genero…';
-
-      try {
-        const r = await fetch('/api/format', {
-          method:'POST',
-          headers:{ 'Content-Type':'application/json' },
-          body: JSON.stringify({ notes })
-        });
-        const j = await r.json().catch(()=> ({}));
-        if (!r.ok) throw new Error(j?.message || 'Errore formattazione');
-        $('#result').textContent = j.verbale || '(vuoto)';
-      } catch (e) {
-        alert(e.message || 'Errore generazione');
-      } finally {
-        btn.disabled = false; btn.textContent = 'Genera verbale';
-      }
-    }
-
-    /* ---------- Eventi UI ---------- */
-    $('#btnUpload').addEventListener('click', () => $('#uploader').click());
-    $('#uploader').addEventListener('change', (e) => {
-      const files = Array.from(e.target.files || []);
-      if (files.length) handleFiles(files);
-    });
-    $('#btnClearPreview').addEventListener('click', () => setPreviewHTML(''));
-
-    // Pulsanti rapidi sugli Appunti (anche senza file)
-    document.querySelector('#btnClean')     .addEventListener('click', () => runNotesAction('cleanup'));
-    document.querySelector('#btnMinutesAI') .addEventListener('click', () => runNotesAction('minutes'));
-    document.querySelector('#btnTranscribe').addEventListener('click', () => runNotesAction('transcript'));
-
-    $('#btnGenerate').addEventListener('click', generateMinutes);
-
-    $('#btnReset').addEventListener('click', () => {
-      $('#notes').value = '';
-      $('#result').textContent = 'Il verbale comparirà qui…';
-      setPreviewHTML('');
-      clearQueue();
-    });
-
-    $('#btnCopy').addEventListener('click', async () => {
-      const t = $('#result').textContent;
-      if (!t || t.startsWith('Il verbale')) return;
-      try { await navigator.clipboard.writeText(t); alert('Copiato!'); }
-      catch { alert('Impossibile copiare'); }
-    });
-
-    $('#btnDownload').addEventListener('click', () => {
-      const t = $('#result').textContent;
-      if (!t || t.startsWith('Il verbale')) return;
-      const blob = new Blob([t], { type: 'text/markdown;charset=utf-8' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `verbale_${new Date().toISOString().split('T')[0]}.md`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(a.href);
-    });
-
-    /* Avvio */
-    health();
-  </script>
-</body>
-</html>
