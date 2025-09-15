@@ -1,38 +1,52 @@
-import { createReadStream } from 'fs';
-import { join } from 'path';
+import { request as httpRequest } from 'http';
+import { request as httpsRequest } from 'https';
+import { URL } from 'url';
 import OpenAI from 'openai';
+import axios from 'axios';
 
-// Assicurati che la tua API Key sia salvata come variabile d'ambiente su Vercel
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Assicurati che le tue chiavi siano variabili d'ambiente
+const ASSEMBLYAI_API_KEY = process.env.ASSEMBLYAI_API_KEY;
+const ASSEMBLYAI_UPLOAD_URL = 'https://api.assemblyai.com/v2/upload';
+const ASSEMBLYAI_TRANSCRIPT_URL = 'https://api.assemblyai.com/v2/transcript';
 
 export default async function handler(req, res) {
-  // L'endpoint accetta solo richieste POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  // Assicurati che la richiesta contenga un file audio
-  // Questo esempio presuppone che il file sia inviato in un formato supportato (es. multipart/form-data)
-  // Potrebbe essere necessario un parser come 'busboy' o 'formidable' se non usi fetch nel frontend
-  if (!req.body || !req.body.file) {
-    return res.status(400).json({ error: 'No audio file provided' });
-  }
-
   try {
-    const audioFile = req.body.file; // Ottieni il file audio dalla richiesta
+    const file = req.body.file; // Il file inviato dal frontend
+    
+    if (!file) {
+      return res.status(400).json({ error: 'No audio file provided' });
+    }
 
-    // Invia il file all'API di OpenAI per la trascrizione
-    const transcription = await openai.audio.transcriptions.create({
-      file: audioFile,
-      model: 'whisper-1',
+    // Step 1: Upload del file ad AssemblyAI
+    const uploadRes = await axios.post(ASSEMBLYAI_UPLOAD_URL, file, {
+      headers: {
+        'authorization': ASSEMBLYAI_API_KEY,
+        'Content-Type': 'application/octet-stream',
+      },
     });
 
-    // Restituisci il testo trascritto al frontend
+    const audioUrl = uploadRes.data.upload_url;
+
+    // Step 2: Invia l'URL ad AssemblyAI per la trascrizione
+    const transcriptRes = await axios.post(ASSEMBLYAI_TRANSCRIPT_URL, {
+      audio_url: audioUrl,
+    }, {
+      headers: {
+        'authorization': ASSEMBLYAI_API_KEY,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const transcriptId = transcriptRes.data.id;
+
+    // Restituisci l'ID della trascrizione al frontend
     res.status(200).json({
       success: true,
-      text: transcription.text,
+      transcriptId: transcriptId,
     });
   } catch (error) {
     console.error('Errore durante la trascrizione:', error);
