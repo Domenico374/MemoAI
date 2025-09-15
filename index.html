@@ -9,6 +9,12 @@
   <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
   <!-- PDF preview (render first page) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <script>
+    // Configura PDF.js (worker obbligatorio per il rendering)
+    window.pdfjsLib = window.pdfjsLib || window['pdfjs-dist/build/pdf'];
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+  </script>
   <style>
     body { background:#f5f7fb }
     .prose :where(h1,h2,h3){margin:.25rem 0 .5rem}
@@ -38,10 +44,8 @@
           class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Seleziona file</button>
       </div>
 
-      <!-- lista file / stati -->
       <ul id="queue" class="mt-4 space-y-2 text-sm"></ul>
 
-      <!-- input nascosto -->
       <input id="uploader" type="file" multiple
              accept=".txt,.md,.pdf,.docx,.mp3,.m4a,.wav,.ogg,.webm"
              class="hidden" />
@@ -96,7 +100,6 @@
     const $ = (s) => document.querySelector(s);
     const queueEl   = $('#queue');
     const previewEl = $('#preview');
-    const log = (...a) => console.log('[MemoAI]', ...a);
 
     function addQueueRow(name, meta, status) {
       const li = document.createElement('li');
@@ -106,8 +109,7 @@
         <div>
           <div class="font-medium">${name}</div>
           <div class="text-slate-500 text-xs">${meta} · <span class="status">${status}</span></div>
-        </div>
-      `;
+        </div>`;
       queueEl.appendChild(li);
       return li;
     }
@@ -129,13 +131,20 @@
     function escapeHTML(s='') {
       return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
     }
+    function arrayBufferToDataURL(ab, mime='application/pdf') {
+      const bytes = new Uint8Array(ab);
+      let bin = '';
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      const b64 = btoa(bin);
+      return `data:${mime};base64,${b64}`;
+    }
 
     /* ---------- health check ---------- */
     async function health() {
       const badge = $('#healthBadge');
       try {
-        const b = await fetch('/api/blob-url'); // GET ok
-        const e = await fetch('/api/extract');  // GET ok (route di echo)
+        const b = await fetch('/api/blob-url'); // stub ok
+        const e = await fetch('/api/extract');  // GET ok
         if (b.ok && e.ok) {
           badge.textContent = 'API ok';
           badge.className = "text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700";
@@ -163,10 +172,10 @@
       const r = await fetch(uploadUrl, { method: 'POST', body: fd });
       const j = await r.json().catch(()=> ({}));
       if (!r.ok || !j?.url) throw new Error(j?.message || 'Upload fallito');
-      return j.url; // URL del blob
+      return j.url;
     }
-    // ⬇️ USO /api/extract e passo anche fileName
     async function extractWithUrl(blobUrl, name) {
+      // non usata per PDF (ora usiamo dataURL), utile se in futuro vorrai blob
       const r = await fetch('/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -174,8 +183,7 @@
       });
       const j = await r.json().catch(()=> ({}));
       if (!r.ok) throw new Error(j?.message || 'Errore estrazione');
-      const text = j.text || j.content || j.result || '';
-      return text;
+      return j.text || j.content || j.result || '';
     }
     async function transcribeWithUrl(blobUrl) {
       const r = await fetch('/api/whisper', {
@@ -247,12 +255,12 @@
             continue;
           }
 
-          /* PDF → anteprima 1ª pagina + estrazione server (fallback locale) */
+          /* PDF → preview 1ª pagina + estrazione via /api/extract (dataURL) con fallback locale */
           if (isPdf) {
             setRowStatus(li, 'anteprima PDF…');
-            const arrayBuffer = await file.arrayBuffer();
 
-            // render grafico
+            // Render 1ª pagina (locale)
+            const arrayBuffer = await file.arrayBuffer();
             const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
             const page = await pdf.getPage(1);
             const viewport = page.getViewport({ scale: 1.2 });
@@ -264,20 +272,29 @@
             setPreviewHTML("");
             previewEl.appendChild(canvas);
 
-            // estrazione testo
+            // Estrazione testo → dataURL → /api/extract
             setRowStatus(li, 'estrazione testo…');
             let text = '';
             try {
-              const uploadUrl = await getUploadUrl();
-              const blobUrl   = await uploadToBlob(uploadUrl, file);
-              text = await extractWithUrl(blobUrl, name);   // <-- passo name
+              const dataURL = arrayBufferToDataURL(arrayBuffer, 'application/pdf');
+              const r = await fetch('/api/extract', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ dataURL, fileName: name })
+              });
+              const j = await r.json().catch(()=> ({}));
+              if (!r.ok) throw new Error(j?.message || 'Errore estrazione');
+              text = j.text || '';
             } catch (e) {
               console.warn('Estrazione server fallita, fallback locale:', e);
             }
+
+            // Fallback locale se necessario
             if (!text || !text.trim()) {
               setRowStatus(li, 'estrazione locale…');
               text = await extractPdfTextLocal(arrayBuffer, 8);
             }
+
             appendToNotes(`Estratto: ${name}`, text || '(nessun testo)');
             setRowStatus(li, 'estratto');
             continue;
@@ -301,7 +318,6 @@
           alert(`${name}: ${e.message || 'Errore'}`);
         }
       }
-      // reset per poter ricaricare gli stessi file
       $('#uploader').value = '';
     }
 
