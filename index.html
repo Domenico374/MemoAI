@@ -10,10 +10,15 @@
   <!-- PDF preview (render first page) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script>
-    /* Configura PDF.js (worker obbligatorio per il rendering) */
-    window.pdfjsLib = window.pdfjsLib || window['pdfjs-dist/build/pdf'];
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    // Configura PDF.js (worker) quando il DOM è pronto, con controlli di esistenza
+    document.addEventListener('DOMContentLoaded', function(){
+      var lib = window.pdfjsLib || (window['pdfjs-dist/build/pdf'] || null);
+      if (lib && lib.GlobalWorkerOptions) {
+        lib.GlobalWorkerOptions.workerSrc =
+          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+        window.pdfjsLib = lib; // assicura alias globale
+      }
+    });
   </script>
   <style>
     body { background:#f5f7fb }
@@ -138,54 +143,56 @@
 
   <script>
     /* ---------- helpers UI ---------- */
-    const $ = (s) => document.querySelector(s);
-    const queueEl   = $('#queue');
-    const previewEl = $('#preview');
+    function $(s){ return document.querySelector(s); }
+    var queueEl   = $('#queue');
+    var previewEl = $('#preview');
 
     function addQueueRow(name, meta, status) {
-      const li = document.createElement('li');
+      var li = document.createElement('li');
       li.className = "border rounded-lg px-3 py-2 flex items-center justify-between";
       li.dataset.name = name;
-      li.innerHTML = `
-        <div>
-          <div class="font-medium">${name}</div>
-          <div class="text-slate-500 text-xs">${meta} · <span class="status">${status}</span></div>
-        </div>`;
+      li.innerHTML =
+        '<div>' +
+          '<div class="font-medium">'+ name +'</div>' +
+          '<div class="text-slate-500 text-xs">'+ meta +' · <span class="status">'+ status +'</span></div>' +
+        '</div>';
       queueEl.appendChild(li);
       return li;
     }
-    function setRowStatus(li, status, danger=false) {
-      const s = li.querySelector('.status');
+    function setRowStatus(li, status, danger){
+      var s = li.querySelector('.status');
       s.textContent = status;
       s.className = "status " + (danger ? "text-red-500" : "text-slate-500");
     }
-    function clearQueue() { queueEl.innerHTML = ''; }
+    function clearQueue(){ queueEl.innerHTML = ''; }
 
-    function appendToNotes(header, text) {
-      const ta = $('#notes');
-      const section = (header ? `[${header}]\n` : '') + (text || '');
-      ta.value = (ta.value ? ta.value + '\n---\n' : '') + section;
+    function appendToNotes(header, text){
+      var ta = $('#notes');
+      var section = (header ? "["+header+"]\n" : "") + (text || "");
+      ta.value = (ta.value ? ta.value + "\n---\n" : "") + section;
     }
-    function setPreviewHTML(html) {
-      previewEl.innerHTML = html || `<p class="text-slate-500">L’anteprima comparirà qui…</p>`;
+    function setPreviewHTML(html){
+      previewEl.innerHTML = html || '<p class="text-slate-500">L’anteprima comparirà qui…</p>';
     }
-    function escapeHTML(s='') {
-      return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+    function escapeHTML(s){
+      s = String(s || "");
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
-    function arrayBufferToDataURL(ab, mime='application/pdf') {
-      const bytes = new Uint8Array(ab);
-      let bin = '';
-      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-      const b64 = btoa(bin);
-      return `data:${mime};base64,${b64}`;
+    function arrayBufferToDataURL(ab, mime){
+      mime = mime || 'application/pdf';
+      var bytes = new Uint8Array(ab);
+      var bin = '';
+      for (var i=0;i<bytes.length;i++) bin += String.fromCharCode(bytes[i]);
+      var b64 = btoa(bin);
+      return 'data:'+mime+';base64,'+b64;
     }
 
     /* ---------- health check ---------- */
-    async function health() {
-      const badge = $('#healthBadge');
+    async function health(){
+      var badge = $('#healthBadge');
       try {
-        const b = await fetch('/api/blob-url'); // stub ok
-        const e = await fetch('/api/extract');  // GET ok
+        var b = await fetch('/api/blob-url');
+        var e = await fetch('/api/extract');
         if (b.ok && e.ok) {
           badge.textContent = 'API ok';
           badge.className = "text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700";
@@ -193,118 +200,121 @@
           badge.textContent = 'API parziali';
           badge.className = "text-xs px-2.5 py-1 rounded-full bg-amber-100 text-amber-700";
         }
-      } catch {
+      } catch(err){
         badge.textContent = 'API offline';
         badge.className = "text-xs px-2.5 py-1 rounded-full bg-rose-100 text-rose-700";
       }
     }
 
     /* ---------- API helpers ---------- */
-    async function getUploadUrl() {
-      const r = await fetch('/api/blob-url');
+    async function getUploadUrl(){
+      var r = await fetch('/api/blob-url');
       if (!r.ok) throw new Error('blob-url non disponibile');
-      const j = await r.json();
-      if (!j.uploadUrl) throw new Error('uploadUrl mancante');
+      var j = await r.json();
+      if (!(j && j.uploadUrl)) throw new Error('uploadUrl mancante');
       return j.uploadUrl;
     }
-    async function uploadToBlob(uploadUrl, file) {
-      const fd = new FormData();
+    async function uploadToBlob(uploadUrl, file){
+      var fd = new FormData();
       fd.append('file', file, file.name || 'file');
-      const r = await fetch(uploadUrl, { method: 'POST', body: fd });
-      const j = await r.json().catch(()=> ({}));
-      if (!r.ok || !j?.url) throw new Error(j?.message || 'Upload fallito');
+      var r = await fetch(uploadUrl, { method:'POST', body: fd });
+      var j; try { j = await r.json(); } catch(e){ j = {}; }
+      if (!r.ok || !(j && j.url)) throw new Error((j && j.message) || 'Upload fallito');
       return j.url;
     }
-    async function extractWithUrl(blobUrl, name) {
-      // Non usata per PDF (per essi usiamo dataURL), utile in futuro se avrai un vero blob server.
-      const r = await fetch('/api/extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+    async function extractWithUrl(blobUrl, name){
+      var r = await fetch('/api/extract', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
         body: JSON.stringify({ fileUrl: blobUrl, fileName: name })
       });
-      const j = await r.json().catch(()=> ({}));
-      if (!r.ok) throw new Error(j?.message || 'Errore estrazione');
-      return j.text || j.content || j.result || '';
+      var j; try { j = await r.json(); } catch(e){ j = {}; }
+      if (!r.ok) throw new Error((j && j.message) || 'Errore estrazione');
+      return (j && (j.text || j.content || j.result)) || '';
     }
-    async function transcribeWithUrl(blobUrl) {
-      const r = await fetch('/api/whisper', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+    async function transcribeWithUrl(blobUrl){
+      var r = await fetch('/api/whisper', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
         body: JSON.stringify({ url: blobUrl })
       });
-      const j = await r.json().catch(()=> ({}));
-      if (!r.ok || !j?.ok) throw new Error(j?.message || 'Errore trascrizione');
-      return j.text || '';
+      var j; try { j = await r.json(); } catch(e){ j = {}; }
+      if (!r.ok || !(j && j.ok)) throw new Error((j && j.message) || 'Errore trascrizione');
+      return (j && j.text) || '';
     }
 
     /* ---------- Fallback locali (pulsanti rapidi) ---------- */
-    function cleanText(t="") {
+    function cleanText(t){
+      t = String(t || "");
       return t.replace(/\r/g,"")
         .replace(/[ \t]+\n/g,"\n")
         .replace(/\n{3,}/g,"\n\n")
         .replace(/[ \t]{2,}/g," ")
         .trim();
     }
-    function toMinutes(t="") {
-      const lines = cleanText(t).split("\n").filter(Boolean);
-      const bullets = lines.map(l => `- ${l.trim()}`).join("\n");
-      const date = new Date().toLocaleString();
-      return `# Verbale\n_Data:_ ${date}\n\n## Punti trattati\n${bullets}\n`;
+    function toMinutes(t){
+      var lines = cleanText(t).split("\n").filter(function(x){return x;});
+      var bullets = lines.map(function(l){ return "- " + l.trim(); }).join("\n");
+      var date = new Date().toLocaleString();
+      return "# Verbale\n_Data:_ "+date+"\n\n## Punti trattati\n"+bullets+"\n";
     }
-    function toTranscriptLocal(t="") {
+    function toTranscriptLocal(t){
       return cleanText(
-        t
+        String(t||"")
           .replace(/\[?\(?\b\d{1,2}:\d{2}(?::\d{2})?\)?\]?/g, "")
           .replace(/\b(eh+m*|mm+|mah|cioè|tipo|allora)\b/gi, "")
           .replace(/(?:\n?\s*[•\-–]\s+)/g, "\n")
       );
     }
-    async function callTextAPI(endpoints=[], payload) {
-      for (const ep of endpoints) {
-        try {
-          const r = await fetch(ep, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
+    async function callTextAPI(endpoints, payload){
+      endpoints = endpoints || [];
+      for (var i=0;i<endpoints.length;i++){
+        var ep = endpoints[i];
+        try{
+          var r = await fetch(ep, {
+            method:"POST",
+            headers:{ "Content-Type":"application/json" },
+            body: JSON.stringify(payload)
           });
-          const j = await r.json().catch(()=> ({}));
-          if (r.ok) {
-            const out = j.text || j.verbale || j.content || j.result || "";
+          var j; try { j = await r.json(); } catch(e){ j = {}; }
+          if (r.ok){
+            var out = (j && (j.text || j.verbale || j.content || j.result)) || "";
             if (out && typeof out === "string") return out;
           }
-        } catch { /* prova il prossimo */ }
+        }catch(e){}
       }
       return "";
     }
+    async function runNotesAction(kind){
+      var ta = $('#notes');
+      var src = (ta.value || "").trim();
+      if (!src){ alert("Incolla o scrivi del testo negli Appunti prima."); return; }
 
-    async function runNotesAction(kind) {
-      const ta = $('#notes');
-      const src = ta.value.trim();
-      if (!src) { alert("Incolla o scrivi del testo negli Appunti prima."); return; }
-
-      const btnSel = ["#btnClean","#btnMinutesAI","#btnTranscribe","#btnGenerate"];
-      const disable = (v)=>btnSel.forEach(s=>{const b=document.querySelector(s); if(b) b.disabled=v;});
+      var ids = ["#btnClean","#btnMinutesAI","#btnTranscribe","#btnGenerate"];
+      function disable(v){
+        for (var i=0;i<ids.length;i++){ var b=document.querySelector(ids[i]); if (b) b.disabled=v; }
+      }
       disable(true);
 
-      try {
-        let out = "";
+      try{
+        var out = "";
 
-        if (kind === "cleanup") {
+        if (kind === "cleanup"){
           out = await callTextAPI(["/api/cleanup"], { notes: src });
           if (!out) out = cleanText(src);
           ta.value = out;
-          document.querySelector("#result").textContent = out;
+          $('#result').textContent = out;
 
-        } else if (kind === "minutes") {
+        } else if (kind === "minutes"){
           out = await callTextAPI(["/api/minutes","/api/format","/api/verbale"], { notes: src });
           if (!out) out = toMinutes(src);
-          document.querySelector("#result").textContent = out;
+          $('#result').textContent = out;
 
-        } else if (kind === "transcript") {
+        } else if (kind === "transcript"){
           out = await callTextAPI(["/api/cleanup"], { notes: src, mode: "transcript" });
           if (!out) out = toTranscriptLocal(src);
           ta.value = out;
-          document.querySelector("#result").textContent = out;
+          $('#result').textContent = out;
         }
       } finally {
         disable(false);
@@ -312,238 +322,368 @@
     }
 
     /* ---------- NLP leggera client-side (Analisi intelligente) ---------- */
-    function splitSentences(t="") {
-      return t
-        .replace(/\s+/g, " ")
-        .split(/(?<=[\.\?\!])\s+(?=[A-ZÀ-Ú])/g)
-        .map(s => s.trim())
-        .filter(Boolean);
+    // version senza lookbehind (compat): spezza creando un separatore dopo [.?!] seguiti da spazio+lettera maiuscola
+    function splitSentences(t){
+      t = cleanText(t);
+      // Inserisce un separatore "|" dopo . ? ! seguiti da spazio + Maiuscola (italiana)
+      var marked = t.replace(/([\.!\?])\s+([A-ZÀ-Ú])/g, "$1|$2");
+      var parts = marked.split("|");
+      var out = [];
+      for (var i=0;i<parts.length;i++){
+        var s = parts[i].trim();
+        if (s) out.push(s);
+      }
+      return out;
     }
-    function summarizeText(t="", maxSentences=5) {
-      const cues = [
+    function summarizeText(t, maxSentences){
+      maxSentences = maxSentences || 5;
+      var cues = [
         "decisione","decide","delibera","approva","stabilisce","si conviene",
         "scadenza","entro","termine","deadline","consegna",
         "responsabile","incarica","assegnato","owner",
         "bilancio","budget","priorità","urgente","importante"
       ];
-      const sents = splitSentences(cleanText(t));
+      var sents = splitSentences(t);
       if (!sents.length) return "";
-      const scores = sents.map((s,i) => {
-        const lc = s.toLowerCase();
-        const cueScore = cues.reduce((acc,w)=> acc + (lc.includes(w)?1:0), 0);
-        const posScore = (i===0?1:0) + (i===sents.length-1?0.5:0);
-        const lenScore = Math.min(s.length/120, 1);
-        return { s, score: cueScore*2 + posScore + lenScore*0.5 };
+      var scores = sents.map(function(s, i){
+        var lc = s.toLowerCase();
+        var cueScore = 0;
+        for (var k=0;k<cues.length;k++) if (lc.indexOf(cues[k]) !== -1) cueScore++;
+        var posScore = (i===0?1:0) + (i===sents.length-1?0.5:0);
+        var lenScore = Math.min(s.length/120, 1);
+        return { s: s, score: cueScore*2 + posScore + lenScore*0.5 };
       });
-      scores.sort((a,b)=> b.score - a.score);
-      return scores.slice(0, maxSentences).map(x=>x.s).join(" ");
+      scores.sort(function(a,b){ return b.score - a.score; });
+      var take = scores.slice(0, maxSentences).map(function(x){ return x.s; });
+      return take.join(" ");
     }
-    function extractHighlights(t="") {
-      const txt = cleanText(t);
-      const decisions = [];
-      const deadlines = [];
-      const owners = [];
-      const lines = txt.split("\n").map(l=>l.trim()).filter(Boolean);
-      const reDate = /\b(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}|(?:\d{1,2}\s+(?:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-z]*\s+\d{4}))\b/gi;
+    function extractHighlights(t){
+      var txt = cleanText(t);
+      var decisions = [], deadlines = [], owners = [];
+      var lines = txt.split("\n").map(function(l){ return l.trim(); }).filter(function(x){return x;});
+      var reDate = /\b(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}|(?:\d{1,2}\s+(?:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-z]*\s+\d{4}))\b/gi;
 
-      for (const l of lines) {
-        const ll = l.toLowerCase();
+      for (var i=0;i<lines.length;i++){
+        var l = lines[i];
+        var ll = l.toLowerCase();
+
         if (/(delibera|si decide|si stabilisce|si approva|viene approvato|si conviene)/i.test(ll)) {
           decisions.push(l);
         }
         if (/(entro|scadenza|termine|deadline|entro e non oltre|per il|entro il)/i.test(ll)) {
-          const dateMatch = l.match(reDate)?.[0] || "";
-          deadlines.push(dateMatch ? `${l} (data: ${dateMatch})` : l);
+          var m = l.match(reDate);
+          var dateMatch = m ? m[0] : "";
+          deadlines.push(dateMatch ? (l + " (data: " + dateMatch + ")") : l);
         }
-        const m1 = l.match(/responsabile\s*:\s*(.+)$/i);
-        const m2 = l.match(/a cura di\s+(.+)$/i);
-        const m3 = l.match(/si incarica\s+([A-ZÀ-Ú][A-Za-zÀ-ÿ'’\- ]+)\s+di/i);
-        const m4 = l.match(/assegnat[oa]\s+a\s+([A-ZÀ-Ú][A-Za-zÀ-ÿ'’\- ]+)/i);
+        var m1 = l.match(/responsabile\s*:\s*(.+)$/i);
+        var m2 = l.match(/a cura di\s+(.+)$/i);
+        var m3 = l.match(/si incarica\s+([A-ZÀ-Ú][A-Za-zÀ-ÿ'’\- ]+)\s+di/i);
+        var m4 = l.match(/assegnat[oa]\s+a\s+([A-ZÀ-Ú][A-Za-zÀ-ÿ'’\- ]+)/i);
         if (m1) owners.push(m1[1].trim());
         else if (m2) owners.push(m2[1].trim());
         else if (m3) owners.push(m3[1].trim());
         else if (m4) owners.push(m4[1].trim());
       }
+
+      // de-dup
+      function unique(arr){
+        var seen = Object.create(null);
+        var out = [];
+        for (var i=0;i<arr.length;i++){
+          var v = arr[i];
+          if (!seen[v]){ seen[v]=1; out.push(v); }
+        }
+        return out;
+      }
       return {
-        decisions: [...new Set(decisions)],
-        deadlines: [...new Set(deadlines)],
-        owners:    [...new Set(owners)],
+        decisions: unique(decisions),
+        deadlines: unique(deadlines),
+        owners:    unique(owners)
       };
     }
-    function extractActions(t="") {
-      const txt = cleanText(t);
-      const lines = txt.split("\n").map(l=>l.trim()).filter(Boolean);
-      const verbs = /(inviare|invia|preparare|prepara|contattare|contatta|verificare|verifica|aggiornare|aggiorna|convocare|convoca|pagare|paga|richiedere|richiede|redigere|redigi|prenotare|prenota|organizzare|organizza|acquistare|acquista|fare|fai|eseguire|esegue)/i;
-      const reDate = /\b(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}|(?:\d{1,2}\s+(?:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-z]*\s+\d{4}))\b/gi;
+    function extractActions(t){
+      var txt = cleanText(t);
+      var lines = txt.split("\n").map(function(l){return l.trim();}).filter(function(x){return x;});
+      var verbs = /(inviare|invia|preparare|prepara|contattare|contatta|verificare|verifica|aggiornare|aggiorna|convocare|convoca|pagare|paga|richiedere|richiede|redigere|redigi|prenotare|prenota|organizzare|organizza|acquistare|acquista|fare|fai|eseguire|esegue)/i;
+      var reDate = /\b(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}|(?:\d{1,2}\s+(?:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-z]*\s+\d{4}))\b/gi;
 
-      const items = [];
-      for (const l of lines) {
-        if (l.startsWith("-") || l.startsWith("•") || verbs.test(l)) {
-          const due = l.match(reDate)?.[0] || (/(entro|deadline|scadenza|termine)/i.test(l) ? "entro (data da definire)" : "");
-          const owner = (l.match(/(?:da|a|per)\s+([A-ZÀ-Ú][A-Za-zÀ-ÿ'’\- ]+)\b/)||[])[1] ||
-                        (l.match(/(?:responsabile|assegnat[oa])\s*:\s*([A-ZÀ-Ú][A-Za-zÀ-ÿ'’\- ]+)/i)||[])[1] || "";
-          items.push({
-            task: l.replace(/^[\-\•]\s*/, ""),
-            owner: owner || null,
-            due: due   || null
-          });
+      var items = [];
+      for (var i=0;i<lines.length;i++){
+        var l = lines[i];
+        if (l.charAt(0)==="-" || l.charAt(0)==="•" || verbs.test(l)) {
+          var m = l.match(reDate);
+          var due = (m ? m[0] : "") || (/(entro|deadline|scadenza|termine)/i.test(l) ? "entro (data da definire)" : "");
+          var mOwner = (l.match(/(?:da|a|per)\s+([A-ZÀ-Ú][A-Za-zÀ-ÿ'’\- ]+)\b/)||[])[1] ||
+                       (l.match(/(?:responsabile|assegnat[oa])\s*:\s*([A-ZÀ-Ú][A-Za-zÀ-ÿ'’\- ]+)/i)||[])[1] || "";
+          items.push({ task: l.replace(/^[\-\•]\s*/, ""), owner: mOwner || null, due: due || null });
         }
       }
-      const seen = new Set();
-      return items.filter(it => {
-        const k = `${it.task}|${it.owner||""}|${it.due||""}`.toLowerCase();
-        if (seen.has(k)) return false;
-        seen.add(k);
-        return true;
-      });
+      var seen = Object.create(null);
+      var out = [];
+      for (var j=0;j<items.length;j++){
+        var it = items[j];
+        var k = (it.task + "|" + (it.owner||"") + "|" + (it.due||"")).toLowerCase();
+        if (!seen[k]){ seen[k]=1; out.push(it); }
+      }
+      return out;
     }
-    function suggestTags(t="") {
-      const lc = t.toLowerCase();
-      const TAGS = {
+    function suggestTags(t){
+      var lc = String(t||"").toLowerCase();
+      var TAGS = {
         Bilancio: ["bilancio","consuntivo","preventivo","spese","budget","quote","riparto"],
         Lavori:   ["lavori","manutenzione","appalto","impresa","cantiere","capitolato"],
         Convocazione: ["convocazione","ordine del giorno","odg","assemblea","verbale"],
         Fornitori: ["fornitore","fornitori","preventivo","offerta","contratto","fattura"],
         Sicurezza: ["sicurezza","incendio","impianto","adeguamento","certificazione"],
-        Pagamenti: ["pagare","pagamento","mav","bonifico","morosità","sollecito"],
+        Pagamenti: ["pagare","pagamento","mav","bonifico","morosità","sollecito"]
       };
-      const out = [];
-      for (const [tag, kws] of Object.entries(TAGS)) {
-        if (kws.some(k => lc.includes(k))) out.push(tag);
+      var out = [];
+      for (var tag in TAGS){
+        var kws = TAGS[tag];
+        for (var i=0;i<kws.length;i++){
+          if (lc.indexOf(kws[i]) !== -1){ out.push(tag); break; }
+        }
       }
       return out.length ? out : ["Generale"];
     }
-    function renderList(el, arr, bullet="- ") {
-      el.textContent = arr?.length ? arr.map(x=> bullet + x).join("\n") : "—";
+    function renderList(el, arr, bullet){
+      bullet = bullet || "- ";
+      el.textContent = (arr && arr.length) ? arr.map(function(x){return bullet+x;}).join("\n") : "—";
     }
-    function renderTodos(el, items) {
-      if (!items?.length) { el.textContent = "—"; return; }
-      el.textContent = items.map(it => {
-        const who = it.owner ? ` [${it.owner}]` : "";
-        const due = it.due ? ` (scad.: ${it.due})` : "";
-        return `□ ${it.task}${who}${due}`;
+    function renderTodos(el, items){
+      if (!(items && items.length)){ el.textContent = "—"; return; }
+      el.textContent = items.map(function(it){
+        var who = it.owner ? " ["+it.owner+"]" : "";
+        var due = it.due ? " (scad.: "+it.due+")" : "";
+        return "□ " + it.task + who + due;
       }).join("\n");
     }
 
     /* ---------- Fallback: testo PDF locale ---------- */
-    async function extractPdfTextLocal(arrayBuffer, maxPages = 8) {
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      let out = '';
-      const n = Math.min(pdf.numPages, maxPages);
-      for (let i = 1; i <= n; i++) {
-        const page = await pdf.getPage(i);
-        const content = await page.getTextContent();
-        const line = content.items.map(it => it.str).join(' ');
+    async function extractPdfTextLocal(arrayBuffer, maxPages){
+      maxPages = maxPages || 8;
+      var pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      var out = '';
+      var n = Math.min(pdf.numPages, maxPages);
+      for (var i=1;i<=n;i++){
+        var page = await pdf.getPage(i);
+        var content = await page.getTextContent();
+        var line = content.items.map(function(it){ return it.str; }).join(' ');
         out += line + '\n\n';
       }
-      if (pdf.numPages > n) {
-        out += `\n[... testo troncato a ${n}/${pdf.numPages} pagine ...]\n`;
-      }
+      if (pdf.numPages > n) out += "\n[... testo troncato a "+n+"/"+pdf.numPages+" pagine ...]\n";
       return out.trim();
     }
 
     /* ---------- Gestione file & anteprima ---------- */
-    async function handleFiles(files) {
-      for (const file of files) {
-        const name = file.name || 'file';
-        const ext  = (name.split('.').pop() || '').toLowerCase();
-        const meta = `${file.type || '(sconosciuto)'} · ${new Intl.NumberFormat('it-IT').format(file.size)} B`;
-        const li = addQueueRow(name, meta, 'in coda…');
+    async function handleFiles(files){
+      for (var f=0; f<files.length; f++){
+        var file = files[f];
+        var name = file.name || 'file';
+        var ext  = (name.split('.').pop() || '').toLowerCase();
+        var meta = (file.type || '(sconosciuto)') + ' · ' + new Intl.NumberFormat('it-IT').format(file.size) + ' B';
+        var li = addQueueRow(name, meta, 'in coda…');
 
-        try {
-          const isText  = ['txt','md'].includes(ext);
-          const isDocx  = ext === 'docx';
-          const isPdf   = ext === 'pdf';
-          const isAudio = ['mp3','m4a','wav','ogg','webm'].includes(ext);
+        try{
+          var isText  = (ext==='txt' || ext==='md');
+          var isDocx  = (ext==='docx');
+          var isPdf   = (ext==='pdf');
+          var isAudio = (['mp3','m4a','wav','ogg','webm'].indexOf(ext)!==-1);
 
-          /* TXT/MD → anteprima & appunti locali */
-          if (isText) {
+          if (isText){
             setRowStatus(li, 'lettura locale…');
-            const t = await file.text();
-            setPreviewHTML(`<pre style="white-space:pre-wrap;">${escapeHTML(t)}</pre>`);
-            appendToNotes(`Testo locale: ${name}`, t);
+            var t = await file.text();
+            setPreviewHTML('<pre style="white-space:pre-wrap;">'+escapeHTML(t)+'</pre>');
+            appendToNotes('Testo locale: '+name, t);
             setRowStatus(li, 'anteprima pronta');
             continue;
           }
 
-          /* DOCX → anteprima & appunti con Mammoth */
-          if (isDocx) {
+          if (isDocx){
             setRowStatus(li, 'conversione .docx…');
-            const arrayBuffer = await file.arrayBuffer();
-            const { value: html } = await window.mammoth.convertToHtml({ arrayBuffer }, {
+            var arrayBuffer = await file.arrayBuffer();
+            var res = await window.mammoth.convertToHtml({ arrayBuffer: arrayBuffer }, {
               styleMap: [
                 "p[style-name='Title'] => h1:fresh",
                 "p[style-name='Heading 1'] => h2:fresh",
-                "p[style-name='Heading 2'] => h3:fresh",
-              ],
+                "p[style-name='Heading 2'] => h3:fresh"
+              ]
             });
-            setPreviewHTML(html || `<p>(Documento vuoto)</p>`);
-            const tmp = document.createElement('div'); tmp.innerHTML = html;
-            appendToNotes(`Estratto (locale): ${name}`, (tmp.textContent || tmp.innerText || '').trim());
+            var html = (res && res.value) || "";
+            setPreviewHTML(html || '<p>(Documento vuoto)</p>');
+            var tmp = document.createElement('div'); tmp.innerHTML = html;
+            var plain = (tmp.textContent || tmp.innerText || '').trim();
+            appendToNotes('Estratto (locale): '+name, plain);
             setRowStatus(li, 'anteprima pronta');
             continue;
           }
 
-          /* PDF → preview 1ª pagina + estrazione via /api/extract (dataURL) con fallback locale */
-          if (isPdf) {
+          if (isPdf){
             setRowStatus(li, 'anteprima PDF…');
+            var lib = window.pdfjsLib;
+            if (!lib){ throw new Error('PDF.js non inizializzato'); }
 
-            // Render 1ª pagina (locale)
-            const arrayBuffer = await file.arrayBuffer();
-            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-            const page = await pdf.getPage(1);
-            const viewport = page.getViewport({ scale: 1.2 });
-            const canvas = document.createElement("canvas");
-            const ctx = canvas.getContext("2d");
+            // Render 1ª pagina
+            var ab = await file.arrayBuffer();
+            var pdf = await lib.getDocument({ data: ab }).promise;
+            var page = await pdf.getPage(1);
+            var viewport = page.getViewport({ scale: 1.2 });
+            var canvas = document.createElement('canvas');
+            var ctx = canvas.getContext('2d');
             canvas.height = viewport.height;
             canvas.width  = viewport.width;
-            await page.render({ canvasContext: ctx, viewport }).promise;
-            setPreviewHTML("");
+            await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+            setPreviewHTML('');
             previewEl.appendChild(canvas);
 
-            // Estrazione testo → dataURL → /api/extract
+            // Estrazione via /api/extract con dataURL
             setRowStatus(li, 'estrazione testo…');
-            let text = '';
+            var text = '';
             try {
-              const dataURL = arrayBufferToDataURL(arrayBuffer, 'application/pdf');
-              const r = await fetch('/api/extract', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ dataURL, fileName: name })
+              var dataURL = arrayBufferToDataURL(ab, 'application/pdf');
+              var r = await fetch('/api/extract', {
+                method:'POST',
+                headers:{ 'Content-Type':'application/json' },
+                body: JSON.stringify({ dataURL: dataURL, fileName: name })
               });
-              const j = await r.json().catch(()=> ({}));
-              if (!r.ok) throw new Error(j?.message || 'Errore estrazione');
-              text = j.text || '';
-            } catch (e) {
-              console.warn('Estrazione server fallita, fallback locale:', e);
+              var j; try { j = await r.json(); } catch(e){ j = {}; }
+              if (!r.ok) throw new Error((j && j.message) || 'Errore estrazione');
+              text = (j && j.text) || '';
+            } catch(e){
+              // fallback locale
             }
-
-            // Fallback locale se necessario
-            if (!text || !text.trim()) {
+            if (!text || !String(text).trim()){
               setRowStatus(li, 'estrazione locale…');
-              text = await extractPdfTextLocal(arrayBuffer, 8);
+              text = await extractPdfTextLocal(ab, 8);
             }
-
-            appendToNotes(`Estratto: ${name}`, text || '(nessun testo)');
+            appendToNotes('Estratto: '+name, text || '(nessun testo)');
             setRowStatus(li, 'estratto');
             continue;
           }
 
-          /* Audio → pipeline server (trascrizione) */
-          if (isAudio) {
+          if (isAudio){
             setRowStatus(li, 'trascrizione…');
-            const uploadUrl = await getUploadUrl();
-            const blobUrl   = await uploadToBlob(uploadUrl, file);
-            const text      = await transcribeWithUrl(blobUrl);
-            appendToNotes(`Trascrizione: ${name}`, text);
+            var uploadUrl = await getUploadUrl();
+            var blobUrl   = await uploadToBlob(uploadUrl, file);
+            var textA     = await transcribeWithUrl(blobUrl);
+            appendToNotes('Trascrizione: '+name, textA);
             setRowStatus(li, 'trascritto');
             continue;
           }
 
           setRowStatus(li, 'formato non supportato', true);
-        } catch (e) {
+        } catch(e){
           console.error(e);
-          setRowStatus(li, e.message || 'errore', true);
-          alert(`${name}: ${e.message || 'Errore'}`);
+          setRowStatus(li, (e && e.message) || 'errore', true);
+          alert(name + ': ' + ((e && e.message) || 'Errore'));
         }
       }
+      $('#uploader').value = '';
+    }
+
+    /* ---------- Genera verbale (storico) ---------- */
+    async function generateMinutes(){
+      var notes = ($('#notes').value || '').trim();
+      if (!notes){ alert('Inserisci o carica degli appunti prima.'); return; }
+
+      var btn = $('#btnGenerate');
+      btn.disabled = true; btn.textContent = 'Genero…';
+
+      try{
+        var r = await fetch('/api/format', {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({ notes: notes })
+        });
+        var j; try { j = await r.json(); } catch(e){ j = {}; }
+        if (!r.ok) throw new Error((j && j.message) || 'Errore formattazione');
+        $('#result').textContent = (j && j.verbale) || '(vuoto)';
+      } catch (e){
+        alert((e && e.message) || 'Errore generazione');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Genera verbale';
+      }
+    }
+
+    /* ---------- Eventi UI ---------- */
+    $('#btnUpload').addEventListener('click', function(){ $('#uploader').click(); });
+    $('#uploader').addEventListener('change', function(e){
+      var files = Array.from(e.target.files || []);
+      if (files.length) handleFiles(files);
+    });
+    $('#btnClearPreview').addEventListener('click', function(){ setPreviewHTML(''); });
+
+    // Pulsanti rapidi sugli Appunti
+    document.querySelector('#btnClean')    .addEventListener('click', function(){ runNotesAction('cleanup'); });
+    document.querySelector('#btnMinutesAI').addEventListener('click', function(){ runNotesAction('minutes'); });
+    document.querySelector('#btnTranscribe').addEventListener('click', function(){ runNotesAction('transcript'); });
+
+    // Analisi intelligente
+    document.querySelector('#btnSummarize').addEventListener('click', function(){
+      var src = ($('#notes').value || '').trim();
+      if (!src){ alert('Incolla o carica del testo negli Appunti.'); return; }
+      var out = summarizeText(src, 5);
+      document.querySelector('#summaryBox').textContent = out || '—';
+    });
+    document.querySelector('#btnHighlights').addEventListener('click', function(){
+      var src = ($('#notes').value || '').trim();
+      if (!src){ alert('Incolla o carica del testo negli Appunti.'); return; }
+      var h = extractHighlights(src);
+      var el = document.querySelector('#highlightsBox');
+      var txt = "";
+      if (h.decisions && h.decisions.length) txt += "Decisioni:\n- " + h.decisions.join("\n- ") + "\n\n";
+      if (h.deadlines && h.deadlines.length) txt += "Scadenze:\n- " + h.deadlines.join("\n- ") + "\n\n";
+      if (h.owners && h.owners.length) txt += "Responsabili:\n- " + h.owners.join("\n- ");
+      el.textContent = txt.trim() || "—";
+    });
+    document.querySelector('#btnTodos').addEventListener('click', function(){
+      var src = ($('#notes').value || '').trim();
+      if (!src){ alert('Incolla o carica del testo negli Appunti.'); return; }
+      var items = extractActions(src);
+      renderTodos(document.querySelector('#todoBox'), items);
+    });
+    document.querySelector('#btnSuggestTags').addEventListener('click', function(){
+      var src = ($('#notes').value || '').trim();
+      if (!src){ alert('Incolla o carica del testo negli Appunti.'); return; }
+      var tags = suggestTags(src);
+      renderList(document.querySelector('#tagsBox'), tags, "# ");
+    });
+
+    $('#btnGenerate').addEventListener('click', generateMinutes);
+
+    $('#btnReset').addEventListener('click', function(){
+      $('#notes').value = '';
+      $('#result').textContent = 'Il verbale comparirà qui…';
+      setPreviewHTML('');
+      clearQueue();
+      document.querySelector('#summaryBox').textContent = '—';
+      document.querySelector('#highlightsBox').textContent = '—';
+      document.querySelector('#todoBox').textContent = '—';
+      document.querySelector('#tagsBox').textContent = '—';
+    });
+
+    $('#btnCopy').addEventListener('click', async function(){
+      var t = $('#result').textContent;
+      if (!t || t.indexOf('Il verbale') === 0) return;
+      try { await navigator.clipboard.writeText(t); alert('Copiato!'); }
+      catch (e) { alert('Impossibile copiare'); }
+    });
+
+    $('#btnDownload').addEventListener('click', function(){
+      var t = $('#result').textContent;
+      if (!t || t.indexOf('Il verbale') === 0) return;
+      var blob = new Blob([t], { type: 'text/markdown;charset=utf-8' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'verbale_' + new Date().toISOString().split('T')[0] + '.md';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+    });
+
+    /* Avvio */
+    health();
+  </script>
+</body>
+</html>
