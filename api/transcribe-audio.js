@@ -15,13 +15,18 @@ export default async function handler(req, res) {
   }
 
   try {
-    const file = req.body.file; // Il file inviato dal frontend
-    
-    if (!file) {
-      return res.status(400).json({ error: 'No audio file provided' });
-    }
+    // Step 1: Gestisci il file in streaming
+    const file = await new Promise((resolve) => {
+      let chunks = [];
+      req.on('data', (chunk) => {
+        chunks.push(chunk);
+      });
+      req.on('end', () => {
+        resolve(Buffer.concat(chunks));
+      });
+    });
 
-    // Step 1: Upload del file ad AssemblyAI
+    // Step 2: Upload del file ad AssemblyAI
     const uploadRes = await axios.post(ASSEMBLYAI_UPLOAD_URL, file, {
       headers: {
         'authorization': ASSEMBLYAI_API_KEY,
@@ -31,7 +36,7 @@ export default async function handler(req, res) {
 
     const audioUrl = uploadRes.data.upload_url;
 
-    // Step 2: Invia l'URL ad AssemblyAI per la trascrizione
+    // Step 3: Invia l'URL ad AssemblyAI per la trascrizione
     const transcriptRes = await axios.post(ASSEMBLYAI_TRANSCRIPT_URL, {
       audio_url: audioUrl,
     }, {
