@@ -4,15 +4,24 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Memo AI</title>
+
+  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <style> body { background:#f5f7fb } </style>
+  <style>
+    body { background:#f5f7fb }
+    .btn { @apply px-4 py-2 rounded-xl text-sm transition; }
+    .btn-primary { @apply bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60; }
+    .btn-ghost   { @apply bg-slate-100 hover:bg-slate-200 text-slate-800; }
+    .card { @apply bg-white rounded-2xl shadow p-5; }
+  </style>
 </head>
 <body class="text-slate-800">
-  <div class="max-w-4xl mx-auto p-6">
+  <div class="max-w-3xl mx-auto p-6">
     <header class="mb-6">
       <h1 class="text-3xl font-bold">Memo AI</h1>
       <p class="text-sm text-slate-600">Upload file → Trascrizione / Estrazione → Verbale</p>
     </header>
+
     <div id="root"></div>
   </div>
 
@@ -22,200 +31,177 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <script type="text/babel">
-    const { useState, useRef } = React;
-    const API = {
-      extract: "/api/extract",
-      whisper: "/api/whisper",
-      format: "/api/format",
-      cleanup: "/api/cleanup",
-      blobUrl: "/api/blob-url"
-    };
-
-    const MAX_CLIENT_BYTES = 4.2 * 1024 * 1024; // 4.2MB per Vercel limit
+    const { useRef, useState } = React;
 
     function App() {
-      const [queue, setQueue] = useState([]);
+      const inputRef = useRef(null);
       const [appunti, setAppunti] = useState("");
       const [verbale, setVerbale] = useState("");
-      const [loading, setLoading] = useState(false);
-      const inputRef = useRef(null);
+      const [busy, setBusy] = useState(false);
+      const [msg, setMsg] = useState("");
 
       const pickFiles = () => inputRef.current?.click();
 
-      const onFiles = async (e) => {
-        const files = Array.from(e.target.files || []);
-        for (const f of files) {
-          await addFile(f);
-        }
-        e.target.value = "";
-      };
-
-      const sniffKind = (ext) => {
-        if (["txt","md"].includes(ext)) return "text";
-        if (["docx","pdf"].includes(ext)) return "doc";
-        if (["mp3","m4a","wav","ogg","webm"].includes(ext)) return "audio";
-        return "unknown";
-      };
-
-      const addFile = async (file) => {
-        const ext = (file.name.split(".").pop() || "").toLowerCase();
-        const kind = sniffKind(ext);
-        const fileId = crypto.randomUUID();
-
-        if (kind === "unknown") {
-          alert(`Formato non supportato: ${file.name}`);
-          return;
-        }
-
-        // === Caso: file DOC grande (usa Blob) ===
-        if (kind === "doc" && file.size > MAX_CLIENT_BYTES) {
-          try {
-            // 1) Ottieni uploadUrl
-            const u = await fetch(API.blobUrl);
-            const { uploadUrl } = await u.json();
-
-            // 2) Carica il file su Vercel Blob
-            const up = await fetch(uploadUrl, {
-              method: "POST",
-              headers: {
-                "content-type": file.type || "application/octet-stream",
-                "x-vercel-filename": file.name
-              },
-              body: file
-            });
-            if (!up.ok) throw new Error("Upload Blob fallito");
-            const blobInfo = await up.json();
-            const fileUrl = blobInfo.url;
-
-            // 3) Aggiorna coda
-            setQueue(q => [...q, { id:fileId, name:file.name, type:kind, status:"estraggo…", size:file.size, mime:file.type }]);
-
-            // 4) Chiedi estrazione testo
-            const ex = await fetch(API.extract, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ fileId, fileName: file.name, fileUrl })
-            });
-            const data = await ex.json().catch(()=>({}));
-            if (!ex.ok) {
-              setQueue(q => q.map(i => i.id===fileId ? ({...i, status:"errore: " + (data.detail||data.message)}) : i));
-              return;
-            }
-            const header = `\n---\n[Estratto ${file.name}]\n`;
-            setAppunti(prev => (prev ? prev + header + data.text : data.text));
-            setQueue(q => q.map(i => i.id===fileId ? ({...i, status:"estratto"}) : i));
-            return;
-          } catch (err) {
-            setQueue(q => [...q, { id:fileId, name:file.name, type:kind, status:"errore upload/estrazione" }]);
-            return;
-          }
-        }
-
-        // === Caso: file piccolo (dataURL) ===
-        const dataURL = await new Promise((res, rej) => {
+      // Leggi un file come DataURL (base64)
+      const fileToDataURL = (file) =>
+        new Promise((resolve, reject) => {
           const fr = new FileReader();
-          fr.onload = () => res(fr.result);
-          fr.onerror = rej;
+          fr.onload = () => resolve(fr.result);
+          fr.onerror = reject;
           fr.readAsDataURL(file);
         });
 
-        const m = /^data:([^;]+);base64,/.exec(dataURL) || [];
-        const mime = m[1] || "";
+      // Gestione selezione file
+      const onFiles = async (e) => {
+        const file = (e.target.files || [])[0];
+        e.target.value = "";
+        if (!file) return;
 
-        setQueue(q => [...q, { id:fileId, name:file.name, type:kind, status:"caricato", dataURL, size:file.size, mime }]);
-
-        if (kind === "text") {
-          const text = await file.text();
-          setAppunti(prev => (prev ? prev + "\n" + text : text));
-        } else if (kind === "doc") {
-          setQueue(q => q.map(i => i.id===fileId ? ({...i, status:"estraggo…"}) : i));
-          const ex = await fetch(API.extract, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ fileId, fileName: file.name, dataURL })
-          });
-          const data = await ex.json().catch(()=>({}));
-          if (!ex.ok) {
-            setQueue(q => q.map(i => i.id===fileId ? ({...i, status:"errore: " + (data.detail||data.message)}) : i));
+        const ext = (file.name.split(".").pop() || "").toLowerCase();
+        try {
+          setMsg(`Elaboro ${file.name}…`);
+          // Testo semplice lato client
+          if (["txt", "md"].includes(ext)) {
+            const text = await file.text();
+            setAppunti(prev => prev
+              ? `${prev}\n---\n[${file.name}]\n${text}`
+              : `${text}`);
+            setMsg(`Aggiunto ${file.name}`);
             return;
           }
-          const header = `\n---\n[Estratto ${file.name}]\n`;
-          setAppunti(prev => (prev ? prev + header + data.text : data.text));
-          setQueue(q => q.map(i => i.id===fileId ? ({...i, status:"estratto"}) : i));
+
+          // Estraggo server-side (RAM) senza Blob
+          if (["docx", "pdf"].includes(ext)) {
+            const dataURL = await fileToDataURL(file);
+            const r = await fetch("/api/extract-data", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ fileName: file.name, dataURL })
+            });
+            const data = await r.json().catch(() => ({}));
+            if (!r.ok || !data?.ok) {
+              alert(data?.message || "Errore estrazione file");
+              setMsg("");
+              return;
+            }
+            setAppunti(prev => prev
+              ? `${prev}\n---\n[Estratto ${file.name}]\n${data.text}`
+              : `${data.text}`);
+            setMsg(`Estratto testo da ${file.name}`);
+            return;
+          }
+
+          alert(`Formato non supportato: ${file.name}`);
+          setMsg("");
+        } catch (err) {
+          console.error(err);
+          alert("Errore durante la lettura/elaborazione del file");
+          setMsg("");
         }
       };
 
+      // Genera verbale (usa /api/minutes – cambia se preferisci /api/format o /api/verbale)
       const generaVerbale = async () => {
-        if (!appunti.trim()) { alert("Inserisci o trascrivi degli appunti"); return; }
-        setLoading(true);
+        if (!appunti.trim()) {
+          alert("Inserisci o carica degli appunti prima.");
+          return;
+        }
+        setBusy(true); setMsg("Genero il verbale…");
         try {
-          const r = await fetch(API.format, {
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
+          const r = await fetch("/api/minutes", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ notes: appunti })
           });
-          const data = await r.json();
-          if (!r.ok) throw new Error(data.message||"Errore formattazione");
-          setVerbale(data.verbale || "");
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok || !data?.verbale) {
+            throw new Error(data?.message || "Errore generazione verbale");
+          }
+          setVerbale(data.verbale);
+          setMsg("Verbale generato.");
         } catch (e) {
-          alert(e.message);
-        } finally { setLoading(false); }
+          console.error(e);
+          alert(e.message || "Errore generazione");
+          setMsg("");
+        } finally {
+          setBusy(false);
+        }
+      };
+
+      const copia = async () => {
+        if (!verbale) return;
+        await navigator.clipboard.writeText(verbale);
+        setMsg("Copiato negli appunti ✔︎");
+      };
+
+      const scarica = () => {
+        if (!verbale) return;
+        const blob = new Blob([verbale], { type: "text/markdown;charset=utf-8" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `verbale_${new Date().toISOString().split("T")[0]}.md`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      };
+
+      const reset = () => {
+        setAppunti(""); setVerbale(""); setMsg("");
       };
 
       return (
         <div className="space-y-8">
           {/* Upload */}
-          <section className="bg-white rounded-2xl shadow p-5">
+          <section className="card">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-semibold">Upload file</h2>
               <div>
-                <input ref={inputRef} type="file" multiple className="hidden"
-                  accept=".txt,.md,.docx,.pdf,.mp3,.m4a,.wav,.ogg,.webm"
-                  onChange={onFiles}/>
-                <button onClick={pickFiles}
-                  className="px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm">
+                <input
+                  ref={inputRef}
+                  type="file"
+                  className="hidden"
+                  accept=".txt,.md,.docx,.pdf"
+                  onChange={onFiles}
+                />
+                <button onClick={pickFiles} className="btn btn-ghost">
                   Seleziona file
                 </button>
               </div>
             </div>
-
-            <ul className="mt-4 space-y-2">
-              {queue.map(item=>(
-                <li key={item.id} className="border rounded-lg px-3 py-2">
-                  <div className="flex justify-between items-center">
-                    <div className="text-sm">
-                      <div className="font-medium">{item.name}</div>
-                      <div className="text-slate-500">{item.type} · {item.status}</div>
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <p className="text-xs text-slate-500 mt-2">
+              Suggerimento: per file &gt; 4.5&nbsp;MB usa versioni ridotte. I PDF scansionati richiederanno OCR.
+            </p>
           </section>
 
           {/* Appunti */}
-          <section className="bg-white rounded-2xl shadow p-5">
-            <h2 className="text-lg font-semibold mb-2">Appunti</h2>
-            <textarea value={appunti} onChange={(e)=>setAppunti(e.target.value)}
-              rows="8"
-              className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Appunti trascritti o estratti…"></textarea>
-          </section>
-
-          {/* Genera verbale */}
-          <section className="bg-white rounded-2xl shadow p-5">
-            <button onClick={generaVerbale}
-              disabled={loading}
-              className="px-4 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60">
-              {loading ? "Genero…" : "Genera verbale"}
-            </button>
+          <section className="card">
+            <h2 className="text-lg font-semibold">Appunti</h2>
+            <textarea
+              rows="9"
+              value={appunti}
+              onChange={(e) => setAppunti(e.target.value)}
+              className="w-full mt-3 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Appunti trascritti o estratti…"
+            />
+            <div className="mt-3 flex items-center gap-2">
+              <button onClick={generaVerbale} disabled={busy} className="btn btn-primary">
+                {busy ? "Genero…" : "Genera verbale"}
+              </button>
+              <button onClick={reset} className="btn btn-ghost">Reset</button>
+              {msg && <span className="text-sm text-slate-600 ml-2">{msg}</span>}
+            </div>
           </section>
 
           {/* Verbale */}
-          <section className="bg-white rounded-2xl shadow p-5">
-            <h2 className="text-lg font-semibold mb-2">Verbale</h2>
+          <section className="card">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold">Verbale</h2>
+              <div className="flex gap-2">
+                <button onClick={copia} className="btn btn-ghost">Copia</button>
+                <button onClick={scarica} className="btn btn-ghost">Scarica .md</button>
+              </div>
+            </div>
             <pre className="whitespace-pre-wrap text-sm leading-6 text-slate-800">
-              {verbale || "Il verbale comparirà qui…"}
+{verbale || "Il verbale comparirà qui…"}
             </pre>
           </section>
         </div>
