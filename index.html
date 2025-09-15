@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Memo AI</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Anteprima DOCX lato client -->
+  <!-- DOCX preview (client-side) -->
   <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
-  <!-- Anteprima PDF (render prima pagina) -->
+  <!-- PDF preview (render first page) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <style>
     body { background:#f5f7fb }
-    .prose :where(h1,h2,h3){margin:.25rem 0 0.5rem}
+    .prose :where(h1,h2,h3){margin:.25rem 0 .5rem}
   </style>
 </head>
 <body class="text-slate-800">
@@ -29,7 +29,7 @@
     <section class="bg-white rounded-2xl shadow p-5 mb-6">
       <div class="flex items-start justify-between gap-3">
         <div>
-          <h2 class="text-lg font-semibold">Upload file</h2>
+          <h2 class="text-lg font-semibold">Carica file</h2>
           <p class="text-xs text-slate-500 mt-1">
             Suggerimento: per file &gt; 4.5 MB usare versioni ridotte. I PDF scansionati richiederanno OCR.
           </p>
@@ -38,10 +38,10 @@
           class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Seleziona file</button>
       </div>
 
-      <!-- elenco file caricati -->
+      <!-- lista file / stati -->
       <ul id="queue" class="mt-4 space-y-2 text-sm"></ul>
 
-      <!-- input file nascosto -->
+      <!-- input nascosto -->
       <input id="uploader" type="file" multiple
              accept=".txt,.md,.pdf,.docx,.mp3,.m4a,.wav,.ogg,.webm"
              class="hidden" />
@@ -73,7 +73,7 @@
         </button>
         <button id="btnReset"
           class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">
-          Reset
+          Resettare
         </button>
       </div>
     </section>
@@ -83,7 +83,7 @@
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-lg font-semibold">Verbale</h2>
         <div class="flex gap-2">
-          <button id="btnCopy" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Copia</button>
+          <button id="btnCopy" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Copiare</button>
           <button id="btnDownload" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Scarica .md</button>
         </div>
       </div>
@@ -94,7 +94,7 @@
   <script>
     /* ---------- helpers UI ---------- */
     const $ = (s) => document.querySelector(s);
-    const queueEl = $('#queue');
+    const queueEl   = $('#queue');
     const previewEl = $('#preview');
     const log = (...a) => console.log('[MemoAI]', ...a);
 
@@ -123,7 +123,6 @@
       const section = (header ? `[${header}]\n` : '') + (text || '');
       ta.value = (ta.value ? ta.value + '\n---\n' : '') + section;
     }
-
     function setPreviewHTML(html) {
       previewEl.innerHTML = html || `<p class="text-slate-500">L’anteprima comparirà qui…</p>`;
     }
@@ -131,12 +130,12 @@
       return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
     }
 
-    /* ---------- health check (blob-url & extract) ---------- */
+    /* ---------- health check ---------- */
     async function health() {
       const badge = $('#healthBadge');
       try {
-        const b = await fetch('/api/blob-url');
-        const e = await fetch('/api/extract', { method:'GET' });
+        const b = await fetch('/api/blob-url'); // GET ok
+        const e = await fetch('/api/extract');  // GET ok (route di echo)
         if (b.ok && e.ok) {
           badge.textContent = 'API ok';
           badge.className = "text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700";
@@ -150,7 +149,7 @@
       }
     }
 
-    /* ---------- Upload pipeline ---------- */
+    /* ---------- API helpers ---------- */
     async function getUploadUrl() {
       const r = await fetch('/api/blob-url');
       if (!r.ok) throw new Error('blob-url non disponibile');
@@ -164,17 +163,19 @@
       const r = await fetch(uploadUrl, { method: 'POST', body: fd });
       const j = await r.json().catch(()=> ({}));
       if (!r.ok || !j?.url) throw new Error(j?.message || 'Upload fallito');
-      return j.url; // URL pubblico/temporaneo del blob
+      return j.url; // URL del blob
     }
-    async function extractWithUrl(blobUrl) {
-      const r = await fetch('/api/extract-data', {
+    // ⬇️ USO /api/extract e passo anche fileName
+    async function extractWithUrl(blobUrl, name) {
+      const r = await fetch('/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: blobUrl })
+        body: JSON.stringify({ fileUrl: blobUrl, fileName: name })
       });
       const j = await r.json().catch(()=> ({}));
-      if (!r.ok || !j?.ok) throw new Error(j?.message || 'Errore estrazione');
-      return j.text || '';
+      if (!r.ok) throw new Error(j?.message || 'Errore estrazione');
+      const text = j.text || j.content || j.result || '';
+      return text;
     }
     async function transcribeWithUrl(blobUrl) {
       const r = await fetch('/api/whisper', {
@@ -185,6 +186,23 @@
       const j = await r.json().catch(()=> ({}));
       if (!r.ok || !j?.ok) throw new Error(j?.message || 'Errore trascrizione');
       return j.text || '';
+    }
+
+    /* ---------- Fallback: testo PDF locale ---------- */
+    async function extractPdfTextLocal(arrayBuffer, maxPages = 8) {
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let out = '';
+      const n = Math.min(pdf.numPages, maxPages);
+      for (let i = 1; i <= n; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const line = content.items.map(it => it.str).join(' ');
+        out += line + '\n\n';
+      }
+      if (pdf.numPages > n) {
+        out += `\n[... testo troncato a ${n}/${pdf.numPages} pagine ...]\n`;
+      }
+      return out.trim();
     }
 
     /* ---------- Gestione file & anteprima ---------- */
@@ -201,7 +219,7 @@
           const isPdf   = ext === 'pdf';
           const isAudio = ['mp3','m4a','wav','ogg','webm'].includes(ext);
 
-          /* TXT/MD → anteprima locale + appunti */
+          /* TXT/MD → anteprima & appunti locali */
           if (isText) {
             setRowStatus(li, 'lettura locale…');
             const t = await file.text();
@@ -211,7 +229,7 @@
             continue;
           }
 
-          /* DOCX → conversione locale (Mammoth) + appunti */
+          /* DOCX → anteprima & appunti con Mammoth */
           if (isDocx) {
             setRowStatus(li, 'conversione .docx…');
             const arrayBuffer = await file.arrayBuffer();
@@ -229,27 +247,38 @@
             continue;
           }
 
-          /* PDF → anteprima grafica (prima pagina) + pipeline server per testo */
+          /* PDF → anteprima 1ª pagina + estrazione server (fallback locale) */
           if (isPdf) {
             setRowStatus(li, 'anteprima PDF…');
             const arrayBuffer = await file.arrayBuffer();
+
+            // render grafico
             const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
             const page = await pdf.getPage(1);
             const viewport = page.getViewport({ scale: 1.2 });
-
             const canvas = document.createElement("canvas");
             const ctx = canvas.getContext("2d");
             canvas.height = viewport.height;
-            canvas.width = viewport.width;
+            canvas.width  = viewport.width;
             await page.render({ canvasContext: ctx, viewport }).promise;
             setPreviewHTML("");
             previewEl.appendChild(canvas);
 
+            // estrazione testo
             setRowStatus(li, 'estrazione testo…');
-            const uploadUrl = await getUploadUrl();
-            const blobUrl = await uploadToBlob(uploadUrl, file);
-            const text = await extractWithUrl(blobUrl);
-            appendToNotes(`Estratto: ${name}`, text);
+            let text = '';
+            try {
+              const uploadUrl = await getUploadUrl();
+              const blobUrl   = await uploadToBlob(uploadUrl, file);
+              text = await extractWithUrl(blobUrl, name);   // <-- passo name
+            } catch (e) {
+              console.warn('Estrazione server fallita, fallback locale:', e);
+            }
+            if (!text || !text.trim()) {
+              setRowStatus(li, 'estrazione locale…');
+              text = await extractPdfTextLocal(arrayBuffer, 8);
+            }
+            appendToNotes(`Estratto: ${name}`, text || '(nessun testo)');
             setRowStatus(li, 'estratto');
             continue;
           }
@@ -258,8 +287,8 @@
           if (isAudio) {
             setRowStatus(li, 'trascrizione…');
             const uploadUrl = await getUploadUrl();
-            const blobUrl = await uploadToBlob(uploadUrl, file);
-            const text = await transcribeWithUrl(blobUrl);
+            const blobUrl   = await uploadToBlob(uploadUrl, file);
+            const text      = await transcribeWithUrl(blobUrl);
             appendToNotes(`Trascrizione: ${name}`, text);
             setRowStatus(li, 'trascritto');
             continue;
@@ -272,7 +301,7 @@
           alert(`${name}: ${e.message || 'Errore'}`);
         }
       }
-      // reset input per poter ricaricare gli stessi file
+      // reset per poter ricaricare gli stessi file
       $('#uploader').value = '';
     }
 
@@ -300,7 +329,7 @@
       }
     }
 
-    /* ---------- Azioni UI ---------- */
+    /* ---------- Eventi UI ---------- */
     $('#btnUpload').addEventListener('click', () => $('#uploader').click());
     $('#uploader').addEventListener('change', (e) => {
       const files = Array.from(e.target.files || []);
