@@ -5,14 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Memo AI</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- NEW: Mammoth per .docx lato client -->
+  <!-- Anteprima DOCX lato client -->
   <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
+  <!-- Anteprima PDF (render prima pagina) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <style>
     body { background:#f5f7fb }
+    .prose :where(h1,h2,h3){margin:.25rem 0 0.5rem}
   </style>
 </head>
 <body class="text-slate-800">
   <div class="max-w-4xl mx-auto p-6">
+    <!-- Header -->
     <header class="mb-6 flex items-center justify-between gap-3">
       <div>
         <h1 class="text-3xl font-bold">Memo AI</h1>
@@ -34,7 +38,7 @@
           class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Seleziona file</button>
       </div>
 
-      <!-- elenco file caricati / stati -->
+      <!-- elenco file caricati -->
       <ul id="queue" class="mt-4 space-y-2 text-sm"></ul>
 
       <!-- input file nascosto -->
@@ -43,7 +47,7 @@
              class="hidden" />
     </section>
 
-    <!-- NEW: Anteprima immediata del file caricato -->
+    <!-- Anteprima -->
     <section class="bg-white rounded-2xl shadow p-5 mb-6">
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-lg font-semibold">Anteprima</h2>
@@ -88,7 +92,7 @@
   </div>
 
   <script>
-    // ---------- helpers UI ----------
+    /* ---------- helpers UI ---------- */
     const $ = (s) => document.querySelector(s);
     const queueEl = $('#queue');
     const previewEl = $('#preview');
@@ -127,7 +131,7 @@
       return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
     }
 
-    // ---------- health check (blob-url & extract) ----------
+    /* ---------- health check (blob-url & extract) ---------- */
     async function health() {
       const badge = $('#healthBadge');
       try {
@@ -146,7 +150,7 @@
       }
     }
 
-    // ---------- Upload pipeline ----------
+    /* ---------- Upload pipeline ---------- */
     async function getUploadUrl() {
       const r = await fetch('/api/blob-url');
       if (!r.ok) throw new Error('blob-url non disponibile');
@@ -160,7 +164,7 @@
       const r = await fetch(uploadUrl, { method: 'POST', body: fd });
       const j = await r.json().catch(()=> ({}));
       if (!r.ok || !j?.url) throw new Error(j?.message || 'Upload fallito');
-      return j.url;
+      return j.url; // URL pubblico/temporaneo del blob
     }
     async function extractWithUrl(blobUrl) {
       const r = await fetch('/api/extract-data', {
@@ -183,7 +187,7 @@
       return j.text || '';
     }
 
-    // NEW: anteprima locale per txt/md/docx, server per pdf/audio
+    /* ---------- Gestione file & anteprima ---------- */
     async function handleFiles(files) {
       for (const file of files) {
         const name = file.name || 'file';
@@ -197,7 +201,7 @@
           const isPdf   = ext === 'pdf';
           const isAudio = ['mp3','m4a','wav','ogg','webm'].includes(ext);
 
-          // --- TXT/MD: lettura locale + anteprima immediata ---
+          /* TXT/MD → anteprima locale + appunti */
           if (isText) {
             setRowStatus(li, 'lettura locale…');
             const t = await file.text();
@@ -207,7 +211,7 @@
             continue;
           }
 
-          // --- DOCX: conversione locale con Mammoth + anteprima immediata ---
+          /* DOCX → conversione locale (Mammoth) + appunti */
           if (isDocx) {
             setRowStatus(li, 'conversione .docx…');
             const arrayBuffer = await file.arrayBuffer();
@@ -219,31 +223,42 @@
               ],
             });
             setPreviewHTML(html || `<p>(Documento vuoto)</p>`);
-            // Appunti in testo semplice
             const tmp = document.createElement('div'); tmp.innerHTML = html;
             appendToNotes(`Estratto (locale): ${name}`, (tmp.textContent || tmp.innerText || '').trim());
             setRowStatus(li, 'anteprima pronta');
             continue;
           }
 
-          // --- PDF/Audio: usa la pipeline server (come prima) ---
-          setRowStatus(li, 'richiesta uploadUrl…');
-          const uploadUrl = await getUploadUrl();
-
-          setRowStatus(li, 'upload…');
-          const blobUrl = await uploadToBlob(uploadUrl, file);
-          log('Blob URL:', blobUrl);
-
+          /* PDF → anteprima grafica (prima pagina) + pipeline server per testo */
           if (isPdf) {
+            setRowStatus(li, 'anteprima PDF…');
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            const page = await pdf.getPage(1);
+            const viewport = page.getViewport({ scale: 1.2 });
+
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d");
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            await page.render({ canvasContext: ctx, viewport }).promise;
+            setPreviewHTML("");
+            previewEl.appendChild(canvas);
+
             setRowStatus(li, 'estrazione testo…');
+            const uploadUrl = await getUploadUrl();
+            const blobUrl = await uploadToBlob(uploadUrl, file);
             const text = await extractWithUrl(blobUrl);
             appendToNotes(`Estratto: ${name}`, text);
             setRowStatus(li, 'estratto');
             continue;
           }
 
+          /* Audio → pipeline server (trascrizione) */
           if (isAudio) {
             setRowStatus(li, 'trascrizione…');
+            const uploadUrl = await getUploadUrl();
+            const blobUrl = await uploadToBlob(uploadUrl, file);
             const text = await transcribeWithUrl(blobUrl);
             appendToNotes(`Trascrizione: ${name}`, text);
             setRowStatus(li, 'trascritto');
@@ -261,7 +276,7 @@
       $('#uploader').value = '';
     }
 
-    // ---------- Genera verbale ----------
+    /* ---------- Genera verbale ---------- */
     async function generateMinutes() {
       const notes = $('#notes').value.trim();
       if (!notes) { alert('Inserisci o carica degli appunti prima.'); return; }
@@ -285,7 +300,7 @@
       }
     }
 
-    // ---------- Azioni UI ----------
+    /* ---------- Azioni UI ---------- */
     $('#btnUpload').addEventListener('click', () => $('#uploader').click());
     $('#uploader').addEventListener('change', (e) => {
       const files = Array.from(e.target.files || []);
@@ -322,7 +337,7 @@
       URL.revokeObjectURL(a.href);
     });
 
-    // avvio
+    /* Avvio */
     health();
   </script>
 </body>
