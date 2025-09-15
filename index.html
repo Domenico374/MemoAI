@@ -71,6 +71,15 @@
         placeholder="Appunti trascritti o estratti…"></textarea>
 
       <div class="mt-4 flex flex-wrap gap-2">
+        <!-- NUOVI pulsanti rapidi -->
+        <button id="btnClean"
+          class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Pulizia</button>
+        <button id="btnMinutesAI"
+          class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Verbale</button>
+        <button id="btnTranscribe"
+          class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Trascrizione</button>
+
+        <!-- Tieni anche il bottone storico -->
         <button id="btnGenerate"
           class="px-3 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700">
           Genera verbale
@@ -175,7 +184,7 @@
       return j.url;
     }
     async function extractWithUrl(blobUrl, name) {
-      // non usata per PDF (ora usiamo dataURL), utile se in futuro vorrai blob
+      // non usata per PDF (per essi usiamo dataURL), utile se in futuro vorrai blob
       const r = await fetch('/api/extract', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -194,6 +203,80 @@
       const j = await r.json().catch(()=> ({}));
       if (!r.ok || !j?.ok) throw new Error(j?.message || 'Errore trascrizione');
       return j.text || '';
+    }
+
+    /* ---------- Fallback locali per i pulsanti rapidi ---------- */
+    function cleanText(t="") {
+      return t.replace(/\r/g,"")
+        .replace(/[ \t]+\n/g,"\n")
+        .replace(/\n{3,}/g,"\n\n")
+        .replace(/[ \t]{2,}/g," ")
+        .trim();
+    }
+    function toMinutes(t="") {
+      const lines = cleanText(t).split("\n").filter(Boolean);
+      const bullets = lines.map(l => `- ${l.trim()}`).join("\n");
+      const date = new Date().toLocaleString();
+      return `# Verbale\n_Data:_ ${date}\n\n## Punti trattati\n${bullets}\n`;
+    }
+    function toTranscriptLocal(t="") {
+      return cleanText(
+        t
+          .replace(/\[?\(?\b\d{1,2}:\d{2}(?::\d{2})?\)?\]?/g, "")
+          .replace(/\b(eh+m*|mm+|mah|cioè|tipo|allora)\b/gi, "")
+          .replace(/(?:\n?\s*[•\-–]\s+)/g, "\n")
+      );
+    }
+    async function callTextAPI(endpoints=[], payload) {
+      for (const ep of endpoints) {
+        try {
+          const r = await fetch(ep, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const j = await r.json().catch(()=> ({}));
+          if (r.ok) {
+            const out = j.text || j.verbale || j.content || j.result || "";
+            if (out && typeof out === "string") return out;
+          }
+        } catch { /* prova il prossimo */ }
+      }
+      return "";
+    }
+
+    async function runNotesAction(kind) {
+      const ta = $('#notes');
+      const src = ta.value.trim();
+      if (!src) { alert("Incolla o scrivi del testo negli Appunti prima."); return; }
+
+      const btnSel = ["#btnClean","#btnMinutesAI","#btnTranscribe","#btnGenerate"];
+      const disable = (v)=>btnSel.forEach(s=>{const b=document.querySelector(s); if(b) b.disabled=v;});
+      disable(true);
+
+      try {
+        let out = "";
+
+        if (kind === "cleanup") {
+          out = await callTextAPI(["/api/cleanup"], { notes: src });
+          if (!out) out = cleanText(src);
+          ta.value = out;
+          document.querySelector("#result").textContent = out;
+
+        } else if (kind === "minutes") {
+          out = await callTextAPI(["/api/minutes","/api/format","/api/verbale"], { notes: src });
+          if (!out) out = toMinutes(src);
+          document.querySelector("#result").textContent = out;
+
+        } else if (kind === "transcript") {
+          out = await callTextAPI(["/api/cleanup"], { notes: src, mode: "transcript" });
+          if (!out) out = toTranscriptLocal(src);
+          ta.value = out;
+          document.querySelector("#result").textContent = out;
+        }
+      } finally {
+        disable(false);
+      }
     }
 
     /* ---------- Fallback: testo PDF locale ---------- */
@@ -321,7 +404,7 @@
       $('#uploader').value = '';
     }
 
-    /* ---------- Genera verbale ---------- */
+    /* ---------- Genera verbale (storico) ---------- */
     async function generateMinutes() {
       const notes = $('#notes').value.trim();
       if (!notes) { alert('Inserisci o carica degli appunti prima.'); return; }
@@ -352,6 +435,11 @@
       if (files.length) handleFiles(files);
     });
     $('#btnClearPreview').addEventListener('click', () => setPreviewHTML(''));
+
+    // Pulsanti rapidi sugli Appunti (anche senza file)
+    document.querySelector('#btnClean')     .addEventListener('click', () => runNotesAction('cleanup'));
+    document.querySelector('#btnMinutesAI') .addEventListener('click', () => runNotesAction('minutes'));
+    document.querySelector('#btnTranscribe').addEventListener('click', () => runNotesAction('transcript'));
 
     $('#btnGenerate').addEventListener('click', generateMinutes);
 
