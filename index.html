@@ -7,16 +7,16 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { background:#f5f7fb }
-    .btn { @apply px-3 py-2 rounded-lg text-sm; }
-    .btn-ghost { @apply bg-slate-100 hover:bg-slate-200; }
-    .btn-primary { @apply bg-blue-600 text-white hover:bg-blue-700; }
   </style>
 </head>
 <body class="text-slate-800">
   <div class="max-w-4xl mx-auto p-6">
-    <header class="mb-6">
-      <h1 class="text-3xl font-bold">Memo AI</h1>
-      <p class="text-sm text-slate-600">Upload file → Trascrizione / Estrazione → Formattazione</p>
+    <header class="mb-6 flex items-center justify-between gap-3">
+      <div>
+        <h1 class="text-3xl font-bold">Memo AI</h1>
+        <p class="text-sm text-slate-600">Upload file → Trascrizione / Estrazione → Formattazione</p>
+      </div>
+      <span id="healthBadge" class="text-xs px-2.5 py-1 rounded-full bg-slate-200 text-slate-700">checking…</span>
     </header>
 
     <!-- Upload -->
@@ -25,10 +25,11 @@
         <div>
           <h2 class="text-lg font-semibold">Upload file</h2>
           <p class="text-xs text-slate-500 mt-1">
-            Suggerimento: per file &gt; 4.5 MB usa versioni ridotte. I PDF scansionati richiederanno OCR.
+            Suggerimento: per file &gt; 4.5 MB usare versioni ridotte. I PDF scansionati richiederanno OCR.
           </p>
         </div>
-        <button id="btnUpload" type="button" class="btn btn-ghost">Seleziona file</button>
+        <button id="btnUpload" type="button"
+          class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Seleziona file</button>
       </div>
 
       <!-- elenco file caricati / stati -->
@@ -48,8 +49,14 @@
         placeholder="Appunti trascritti o estratti…"></textarea>
 
       <div class="mt-4 flex flex-wrap gap-2">
-        <button id="btnGenerate" class="btn btn-primary">Genera verbale</button>
-        <button id="btnReset" class="btn btn-ghost">Reset</button>
+        <button id="btnGenerate"
+          class="px-3 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700">
+          Genera verbale
+        </button>
+        <button id="btnReset"
+          class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">
+          Reset
+        </button>
       </div>
     </section>
 
@@ -58,8 +65,8 @@
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-lg font-semibold">Verbale</h2>
         <div class="flex gap-2">
-          <button id="btnCopy" class="btn btn-ghost">Copia</button>
-          <button id="btnDownload" class="btn btn-ghost">Scarica .md</button>
+          <button id="btnCopy" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Copia</button>
+          <button id="btnDownload" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Scarica .md</button>
         </div>
       </div>
       <pre id="result" class="whitespace-pre-wrap text-sm leading-6 text-slate-800">Il verbale comparirà qui…</pre>
@@ -72,14 +79,14 @@
     const queueEl = $('#queue');
     const log = (...a) => console.log('[MemoAI]', ...a);
 
-    function addQueueRow(name, type, status) {
+    function addQueueRow(name, meta, status) {
       const li = document.createElement('li');
       li.className = "border rounded-lg px-3 py-2 flex items-center justify-between";
       li.dataset.name = name;
       li.innerHTML = `
         <div>
           <div class="font-medium">${name}</div>
-          <div class="text-slate-500 text-xs">${type} · <span class="status">${status}</span></div>
+          <div class="text-slate-500 text-xs">${meta} · <span class="status">${status}</span></div>
         </div>
       `;
       queueEl.appendChild(li);
@@ -88,14 +95,33 @@
     function setRowStatus(li, status, danger=false) {
       const s = li.querySelector('.status');
       s.textContent = status;
-      s.className = "status " + (danger ? "text-red-500" : "");
+      s.className = "status " + (danger ? "text-red-500" : "text-slate-500");
     }
     function clearQueue() { queueEl.innerHTML = ''; }
 
     function appendToNotes(header, text) {
       const ta = $('#notes');
-      const section = (header ? `[${header}]\n` : '') + (text || '');
+      const section = (header ? `\[${header}\]\n` : '') + (text || '');
       ta.value = (ta.value ? ta.value + '\n---\n' : '') + section;
+    }
+
+    // ---------- health check (blob-url & extract) ----------
+    async function health() {
+      const badge = $('#healthBadge');
+      try {
+        const b = await fetch('/api/blob-url');
+        const e = await fetch('/api/extract', { method:'GET' });
+        if (b.ok && e.ok) {
+          badge.textContent = 'API ok';
+          badge.className = "text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700";
+        } else {
+          badge.textContent = 'API parziali';
+          badge.className = "text-xs px-2.5 py-1 rounded-full bg-amber-100 text-amber-700";
+        }
+      } catch {
+        badge.textContent = 'API offline';
+        badge.className = "text-xs px-2.5 py-1 rounded-full bg-rose-100 text-rose-700";
+      }
     }
 
     // ---------- Upload pipeline ----------
@@ -111,6 +137,7 @@
       const fd = new FormData();
       fd.append('file', file, file.name || 'file');
       const r = await fetch(uploadUrl, { method: 'POST', body: fd });
+      // endpoint /api/upload (o /api/echo per test) deve rispondere { ok, url, fileId?, size? }
       const j = await r.json().catch(()=> ({}));
       if (!r.ok || !j?.url) throw new Error(j?.message || 'Upload fallito');
       return j.url;
@@ -142,8 +169,8 @@
       for (const file of files) {
         const name = file.name || 'file';
         const ext  = (name.split('.').pop() || '').toLowerCase();
-        const type = file.type || '(sconosciuto)';
-        const li = addQueueRow(name, type, 'in coda…');
+        const meta = `${file.type || '(sconosciuto)'} · ${new Intl.NumberFormat('it-IT').format(file.size)} B`;
+        const li = addQueueRow(name, meta, 'in coda…');
 
         try {
           const isText  = ['txt','md'].includes(ext);
@@ -154,7 +181,7 @@
           if (isText) {
             setRowStatus(li, 'lettura locale…');
             const t = await file.text();
-            appendToNotes(`Testo locale ${name}`, t);
+            appendToNotes(`Testo locale: ${name}`, t);
             setRowStatus(li, 'aggiunto agli appunti');
             continue;
           }
@@ -162,14 +189,14 @@
           setRowStatus(li, 'richiesta uploadUrl…');
           const uploadUrl = await getUploadUrl();
 
-          setRowStatus(li, 'upload su Blob…');
+          setRowStatus(li, 'upload…');
           const blobUrl = await uploadToBlob(uploadUrl, file);
           log('Blob URL:', blobUrl);
 
           if (isDoc) {
             setRowStatus(li, 'estrazione testo…');
             const text = await extractWithUrl(blobUrl);
-            appendToNotes(`Estratto ${name}`, text);
+            appendToNotes(`Estratto: ${name}`, text);
             setRowStatus(li, 'estratto');
             continue;
           }
@@ -177,7 +204,7 @@
           if (isAudio) {
             setRowStatus(li, 'trascrizione…');
             const text = await transcribeWithUrl(blobUrl);
-            appendToNotes(`Trascrizione ${name}`, text);
+            appendToNotes(`Trascrizione: ${name}`, text);
             setRowStatus(li, 'trascritto');
             continue;
           }
@@ -199,13 +226,13 @@
       const notes = $('#notes').value.trim();
       if (!notes) { alert('Inserisci o carica degli appunti prima.'); return; }
 
-      $('#btnGenerate').disabled = true;
-      $('#btnGenerate').textContent = 'Genero…';
+      const btn = $('#btnGenerate');
+      btn.disabled = true; btn.textContent = 'Genero…';
 
       try {
         const r = await fetch('/api/format', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
           body: JSON.stringify({ notes })
         });
         const j = await r.json().catch(()=> ({}));
@@ -214,8 +241,7 @@
       } catch (e) {
         alert(e.message || 'Errore generazione');
       } finally {
-        $('#btnGenerate').disabled = false;
-        $('#btnGenerate').textContent = 'Genera verbale';
+        btn.disabled = false; btn.textContent = 'Genera verbale';
       }
     }
 
@@ -253,6 +279,9 @@
       a.remove();
       URL.revokeObjectURL(a.href);
     });
+
+    // avvio
+    health();
   </script>
 </body>
 </html>
