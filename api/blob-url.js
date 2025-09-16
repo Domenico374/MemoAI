@@ -1,8 +1,11 @@
 // api/blob-url.js
-import { generateUploadUrl } from "@vercel/blob";
+
+// Import compatibile con pacchetti CommonJS
+import blobPkg from "@vercel/blob";
+const { generateUploadUrl } = blobPkg;
 
 export default async function handler(req, res) {
-  // Header CORS (serve se chiami da frontend/browser)
+  // CORS base (utile dal browser)
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -17,21 +20,22 @@ export default async function handler(req, res) {
 
   try {
     // Parametri opzionali dal body
-    const { filename = `upload-${Date.now()}`, contentType = "video/mp4" } =
-      req.body && typeof req.body === "object" ? req.body : {};
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const filename = body.filename || `upload-${Date.now()}`;
+    const contentType = body.contentType || "video/mp4";
 
-    // Genera un URL temporaneo per caricare direttamente su Vercel Blob
+    // URL firmato per upload diretto su Vercel Blob
     const { url, pathname, expiration } = await generateUploadUrl({
-      pathname: `uploads/${filename}`, // percorso nel tuo blob store
+      pathname: `uploads/${filename}`,
       contentType,
-      access: "public", // oppure "private" se vuoi file non pubblici
-      token: process.env.BLOB_READ_WRITE_TOKEN, // token dalle Env
+      access: "public", // usa "private" se non vuoi URL pubblici
+      token: process.env.BLOB_READ_WRITE_TOKEN,
     });
 
     return res.status(200).json({
       ok: true,
-      uploadUrl: url,     // URL firmato per l'upload
-      blobPath: pathname, // percorso nel blob store
+      uploadUrl: url,
+      blobPath: pathname,
       expiresAt: expiration,
       now: Date.now(),
     });
