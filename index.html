@@ -20,9 +20,26 @@
     });
   </script>
   <style>
-    /* ====== Background pastello con temi ====== */
+    /* ====== Tema & sfondo pastello ====== */
+    :root{
+      /* valori di fallback */
+      --bg1:#e0f2fe; --bg2:#e9d5ff; --bg3:#fce7f3;
+      --baseBG:#f5f7fb;   /* base dello sfondo */
+      --cardBG:#ffffff;   /* bg card */
+    }
+
+    /* Ocean */
+    .theme-ocean  { --bg1:#e0f2fe; --bg2:#e9d5ff; --bg3:#fce7f3; --baseBG:#f6fbff; --cardBG:#ffffffee; }
+    /* Sunset */
+    .theme-sunset { --bg1:#fde68a; --bg2:#fca5a5; --bg3:#a7f3d0; --baseBG:#fff8f3; --cardBG:#ffffffee; }
+    /* Mint */
+    .theme-mint   { --bg1:#bbf7d0; --bg2:#a7f3d0; --bg3:#bfdbfe; --baseBG:#f6fff9; --cardBG:#ffffffee; }
+    /* Aqua (acquamarina) */
+    .theme-aqua   { --bg1:#b9ffe9; --bg2:#bfe8ff; --bg3:#e8fff7; --baseBG:#effef9; --cardBG:#ffffffee; }
+
     body{
-      background:#f5f7fb; min-height:100vh; position:relative;
+      background: var(--baseBG);
+      min-height:100vh; position:relative;
     }
     body::before{
       content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
@@ -30,69 +47,70 @@
         radial-gradient(600px 360px at -5% -10%, var(--bg1) 0%, transparent 60%),
         radial-gradient(720px 420px at 105% -10%, var(--bg2) 0%, transparent 60%),
         radial-gradient(800px 520px at 50% 110%, var(--bg3) 0%, transparent 60%);
-      filter: blur(12px) saturate(110%); opacity:.55;
+      filter: blur(12px) saturate(110%);
+      opacity:.5; /* soft */
     }
-    /* default (ocean) */
-    :root{ --bg1:#e0f2fe; --bg2:#e9d5ff; --bg3:#fce7f3; }
-    .theme-ocean  { --bg1:#e0f2fe; --bg2:#e9d5ff; --bg3:#fce7f3; }
-    .theme-sunset { --bg1:#fde68a; --bg2:#fca5a5; --bg3:#a7f3d0; }
-    .theme-mint   { --bg1:#bbf7d0; --bg2:#a7f3d0; --bg3:#bfdbfe; }
+
+    /* Card “soft” */
+    section.bg-white{
+      background: var(--cardBG) !important;
+      backdrop-filter: saturate(115%) blur(.5px);
+      border: 1px solid rgba(15,23,42,.04);
+    }
 
     .prose :where(h1,h2,h3){margin:.25rem 0 .5rem}
 
     /* ====== Pulsanti colorati + stati ====== */
     :root{
-      --radius: 10px;
-      --muted: #e2e8f0;     /* Pulizia */
-      --secondary: #6366f1; /* Verbale */
-      --success: #10b981;   /* Trascrizione */
-      --primary: #2563eb;   /* Genera verbale */
-      --danger: #ef4444;    /* Resettare */
-      --cyan:    #06b6d4;   /* Riassunto */
-      --fuchsia: #d946ef;   /* Punti salienti */
-      --amber:   #f59e0b;   /* To-Do */
-      --teal:    #14b8a6;   /* Suggerisci tag */
+      --radius:10px;
+      --muted:#e2e8f0;     /* Pulizia */
+      --secondary:#6366f1; /* Verbale */
+      --success:#10b981;   /* Trascrizione */
+      --primary:#2563eb;   /* Genera verbale */
+      --danger:#ef4444;    /* Resettare */
+      --cyan:#06b6d4;      /* Riassunto */
+      --fuchsia:#d946ef;   /* Punti salienti */
+      --amber:#f59e0b;     /* To-Do */
+      --teal:#14b8a6;      /* Suggerisci tag */
     }
     .btn{
-      -webkit-tap-highlight-color: transparent;
-      appearance: none;
-      border: 1px solid transparent;
-      border-radius: var(--radius);
-      padding: 8px 14px;
-      font: 600 14px/1 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
-      cursor: pointer;
-      transition: transform .06s ease, box-shadow .2s ease, background-color .2s ease, opacity .2s ease;
-      display: inline-flex; align-items: center; gap: .5rem;
-      box-shadow: 0 1px 0 rgba(15,23,42,.06);
+      -webkit-tap-highlight-color:transparent;
+      appearance:none; border:1px solid transparent;
+      border-radius:var(--radius);
+      padding:8px 14px; font:600 14px/1 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+      cursor:pointer; transition:transform .06s, box-shadow .2s, background-color .2s, opacity .2s;
+      display:inline-flex; align-items:center; gap:.5rem;
+      box-shadow:0 1px 0 rgba(15,23,42,.06);
     }
-    .btn:active{ transform: translateY(1px) scale(.98); }
-    .btn:focus-visible{ outline: 0; box-shadow: 0 0 0 3px rgba(37,99,235,.25); }
+    .btn:active{ transform:translateY(1px) scale(.98); }
+    .btn:focus-visible{ outline:0; box-shadow:0 0 0 3px rgba(37,99,235,.25); }
     .btn[disabled]{ opacity:.55; cursor:not-allowed; }
-    .btn--muted{     background: var(--muted);     color:#0b1220; } .btn--muted:hover{ filter: brightness(.97); }
-    .btn--secondary{ background: var(--secondary); color:#fff; }   .btn--secondary:hover{ filter: brightness(.95); }
-    .btn--success{   background: var(--success);   color:#fff; }   .btn--success:hover{ filter: brightness(.95); }
-    .btn--primary{   background: var(--primary);   color:#fff; }   .btn--primary:hover{ filter: brightness(.95); }
-    .btn--danger{    background: var(--danger);    color:#fff; }   .btn--danger:hover{ filter: brightness(.95); }
-    .btn--cyan{      background: var(--cyan);      color:#fff; }   .btn--cyan:hover{ filter: brightness(.95); }
-    .btn--fuchsia{   background: var(--fuchsia);   color:#fff; }   .btn--fuchsia:hover{ filter: brightness(.95); }
-    .btn--amber{     background: var(--amber);     color:#0b1220;} .btn--amber:hover{ filter: brightness(.97); }
-    .btn--teal{      background: var(--teal);      color:#fff; }   .btn--teal:hover{ filter: brightness(.95); }
+    .btn--muted{     background:var(--muted);     color:#0b1220; } .btn--muted:hover{ filter:brightness(.97); }
+    .btn--secondary{ background:var(--secondary); color:#fff; }   .btn--secondary:hover{ filter:brightness(.95); }
+    .btn--success{   background:var(--success);   color:#fff; }   .btn--success:hover{ filter:brightness(.95); }
+    .btn--primary{   background:var(--primary);   color:#fff; }   .btn--primary:hover{ filter:brightness(.95); }
+    .btn--danger{    background:var(--danger);    color:#fff; }   .btn--danger:hover{ filter:brightness(.95); }
+    .btn--cyan{      background:var(--cyan);      color:#fff; }   .btn--cyan:hover{ filter:brightness(.95); }
+    .btn--fuchsia{   background:var(--fuchsia);   color:#fff; }   .btn--fuchsia:hover{ filter:brightness(.95); }
+    .btn--amber{     background:var(--amber);     color:#0b1220; } .btn--amber:hover{ filter:brightness(.97); }
+    .btn--teal{      background:var(--teal);      color:#fff; }   .btn--teal:hover{ filter:brightness(.95); }
 
-    .btn.is-active{ box-shadow: 0 0 0 3px rgba(16,185,129,.2), 0 6px 14px rgba(2,6,23,.12); }
-    .btn.is-loading{ position: relative; pointer-events:none; }
+    .btn.is-active{ box-shadow:0 0 0 3px rgba(16,185,129,.2), 0 6px 14px rgba(2,6,23,.12); }
+    .btn.is-loading{ position:relative; pointer-events:none; }
     .btn.is-loading::after{
-      content:""; width: 1em; height: 1em; border-radius: 999px;
-      border: 2px solid currentColor; border-top-color: transparent;
-      position:absolute; right: 10px; top: 50%; transform: translateY(-50%);
-      animation: spin .9s linear infinite;
+      content:""; width:1em; height:1em; border-radius:999px;
+      border:2px solid currentColor; border-top-color:transparent;
+      position:absolute; right:10px; top:50%; transform:translateY(-50%);
+      animation:spin .9s linear infinite;
     }
-    @keyframes spin{ to{ transform: translateY(-50%) rotate(360deg) } }
+    @keyframes spin{ to{ transform:translateY(-50%) rotate(360deg) } }
 
-    /* pill tiny buttons */
     .pill{ font:600 12px/1 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; }
   </style>
 </head>
-<body class="text-slate-800 theme-ocean">
+
+<!-- Aqua come tema predefinito -->
+<body class="text-slate-800 theme-aqua">
   <div class="max-w-4xl mx-auto p-6">
     <!-- Header -->
     <header class="mb-6 flex items-center justify-between gap-3">
@@ -110,6 +128,7 @@
           <button data-theme="ocean"  class="pill px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200">Ocean</button>
           <button data-theme="sunset" class="pill px-2.5 py-1 rounded-full bg-rose-100 text-rose-700 hover:bg-rose-200">Sunset</button>
           <button data-theme="mint"   class="pill px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200">Mint</button>
+          <button data-theme="aqua"   class="pill px-2.5 py-1 rounded-full bg-teal-100 text-teal-700 hover:bg-teal-200">Aqua</button>
         </div>
       </div>
     </header>
@@ -207,13 +226,13 @@
   <script>
     /* ========== Theme toggle ========== */
     (function(){
-      const saved = localStorage.getItem('memoai_theme') || 'ocean';
-      document.body.classList.remove('theme-ocean','theme-sunset','theme-mint');
+      const saved = localStorage.getItem('memoai_theme') || 'aqua'; // aqua di default
+      document.body.classList.remove('theme-ocean','theme-sunset','theme-mint','theme-aqua');
       document.body.classList.add('theme-'+saved);
       document.querySelectorAll('[data-theme]').forEach(btn=>{
         btn.addEventListener('click', ()=>{
           const t = btn.dataset.theme;
-          document.body.classList.remove('theme-ocean','theme-sunset','theme-mint');
+          document.body.classList.remove('theme-ocean','theme-sunset','theme-mint','theme-aqua');
           document.body.classList.add('theme-'+t);
           localStorage.setItem('memoai_theme', t);
         });
@@ -566,7 +585,7 @@
       $('#summaryBox').textContent='—'; $('#highlightsBox').textContent='—'; $('#todoBox').textContent='—'; $('#tagsBox').textContent='—';
     }));
 
-    // Analisi intelligente (sincrone lato client con "flash")
+    // Analisi intelligente (client-side)
     const bSum=$('#btnSummarize'), bHig=$('#btnHighlights'), bTodo=$('#btnTodos'), bTags=$('#btnSuggestTags');
 
     bSum.addEventListener('click', ()=> flashActive(bSum, ()=>{
