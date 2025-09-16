@@ -1,75 +1,79 @@
-// api/upload.js - UNICO ENDPOINT PER TUTTO
-import { put } from "@vercel/blob";
+// api/upload.js — UNICO ENDPOINT DI UPLOAD (multipart -> Blob)
+export const runtime = 'nodejs';
+
+import { put } from '@vercel/blob';
+import Busboy from 'busboy';
 
 export const config = {
-  api: {
-    bodyParser: false, // Importante per gestire file upload
-  },
+  api: { bodyParser: false }, // NON bufferizzare: usiamo lo stream
 };
 
+function safeName(name) {
+  return String(name || `upload-${Date.now()}`).replace(/[^\w.\-]/g, '_');
+}
+
 export default async function handler(req, res) {
-  // CORS Headers
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-  
-  if (req.method !== "POST") {
-    return res.status(405).json({ 
-      success: false, 
-      error: "Method not allowed" 
-    });
+  // CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') {
+    return res.status(405).json({ success: false, error: 'Method not allowed' });
   }
 
   try {
-    // Estrai filename dalla query o crea uno di default
-    const originalFilename = req.query.filename || `upload-${Date.now()}`;
-    const cleanFilename = originalFilename.toString().replace(/[^a-zA-Z0-9.-]/g, "_");
-    
-    // Determina content type
-    const contentType = req.headers["content-type"] || "application/octet-stream";
-    
-    // Log per debug
-    console.log("📁 Upload started:", {
-      filename: cleanFilename,
-      contentType,
-      headers: Object.keys(req.headers)
+    const blob = await new Promise((resolve, reject) => {
+      const bb = Busboy({ headers: req.headers });
+      let settled = false;
+
+      bb.on('file', async (fieldname, fileStream, info) => {
+        const original = req.query.filename || info?.filename || `upload-${Date.now()}`;
+        const filename = safeName(original);
+        const mime = info?.mimeType || 'application/octet-stream';
+
+        try {
+          const result = await put(`uploads/${filename}`, fileStream, {
+            access: 'public',
+            contentType: mime,
+            addRandomSuffix: true,
+            // Se necessario: token: process.env.BLOB_READ_WRITE_TOKEN,
+          });
+          if (!settled) { settled = true; resolve(result); }
+        } catch (err) {
+          if (!settled) { settled = true; reject(err); }
+        }
+      });
+
+      bb.on('error', (err) => { if (!settled) { settled = true; reject(err); } });
+
+      // Se chiude senza aver ricevuto file -> errore
+      bb.on('finish', () => {
+        if (!settled) reject(new Error('Nessun file trovato nel form-data (campo file)'));
+      });
+
+      req.pipe(bb);
     });
 
-    // Upload diretto a Vercel Blob usando lo stream della request
-    const blob = await put(`uploads/${cleanFilename}`, req, {
-      access: "public",
-      contentType: contentType,
-      addRandomSuffix: true, // Evita conflitti di nome
-    });
-
-    console.log("✅ Upload successful:", blob);
-
-    // Risposta di successo
     return res.status(200).json({
       success: true,
-      message: "File uploaded successfully",
+      message: 'File uploaded successfully',
       data: {
-        url: blob.url,           // URL pubblico per accesso
-        pathname: blob.pathname, // Path interno
-        size: blob.size,         // Dimensione in bytes
+        url: blob.url,              // URL pubblico
+        pathname: blob.pathname,    // percorso nello store
+        size: blob.size,            // bytes
         uploadedAt: blob.uploadedAt,
-        filename: cleanFilename,
-        contentType: contentType
-      }
+        contentType: blob.contentType,
+      },
     });
-
   } catch (error) {
-    console.error("❌ Upload error:", error);
-    
+    console.error('❌ Upload error:', error);
     return res.status(500).json({
       success: false,
-      error: "Upload failed",
+      error: 'Upload failed',
       details: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   }
 }
