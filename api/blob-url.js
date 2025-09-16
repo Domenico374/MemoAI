@@ -1,8 +1,11 @@
 // api/blob-url.js
-export const runtime = "edge"; // <-- importante: abilita Edge Function
+export const runtime = "edge"; // obbligatorio per Edge Function
 
-import blobPkg from "@vercel/blob";
-const { generateUploadUrl } = blobPkg;
+// Import "a prova di bomba": prende sia named export sia default
+import * as blobNS from "@vercel/blob";
+const generateUploadUrl =
+  blobNS.generateUploadUrl ??
+  (blobNS.default && blobNS.default.generateUploadUrl);
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -16,13 +19,13 @@ export default async function handler(req) {
     return new Response(null, { status: 200, headers: CORS });
   }
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ ok: false, error: "Method not allowed" }), {
-      status: 405,
-      headers: CORS,
-    });
+    return new Response(
+      JSON.stringify({ ok: false, error: "Method not allowed" }),
+      { status: 405, headers: CORS }
+    );
   }
 
-  // body opzionale
+  // leggi body in sicurezza
   let filename = `upload-${Date.now()}.mp4`;
   let contentType = "video/mp4";
   try {
@@ -34,17 +37,32 @@ export default async function handler(req) {
   } catch {}
 
   try {
+    // diagnostica: verifica che l'export esista
+    if (typeof generateUploadUrl !== "function") {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error: "generateUploadUrl_unavailable",
+          availableExports: Object.keys(blobNS),
+          hint:
+            "Aggiorna @vercel/blob alla versione più recente e redeploy. " +
+            "Questo endpoint richiede generateUploadUrl.",
+        }),
+        { status: 500, headers: CORS }
+      );
+    }
+
+    // lo Store è collegato al progetto → non serve token
     const { url, pathname, expiration } = await generateUploadUrl({
       pathname: `uploads/${filename}`,
-      access: "public",      // usa "private" se vuoi nasconderli
+      access: "public",
       contentType,
-      // niente token: lo store è già connesso al progetto
     });
 
     return new Response(
       JSON.stringify({
         ok: true,
-        uploadUrl: url,       // <-- https://blob.vercel-storage.com/...
+        uploadUrl: url, // <-- https://blob.vercel-storage.com/...
         blobPath: pathname,
         expiresAt: expiration,
         now: Date.now(),
@@ -52,9 +70,12 @@ export default async function handler(req) {
       { status: 200, headers: CORS }
     );
   } catch (err) {
-    return new Response(JSON.stringify({ ok: false, error: String(err?.message || err) }), {
-      status: 500,
-      headers: CORS,
-    });
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        error: String(err?.message || err),
+      }),
+      { status: 500, headers: CORS }
+    );
   }
 }
