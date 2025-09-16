@@ -52,7 +52,7 @@
       <ul id="queue" class="mt-4 space-y-2 text-sm"></ul>
 
       <input id="uploader" type="file" multiple
-             accept=".txt,.md,.pdf,.docx,.mp3,.m4a,.wav,.ogg,.webm"
+             accept=".txt,.md,.pdf,.docx,.mp3,.m4a,.wav,.ogg,.webm,.mp4,.mov,.mkv"
              class="hidden" />
     </section>
 
@@ -322,10 +322,9 @@
     }
 
     /* ---------- NLP leggera client-side (Analisi intelligente) ---------- */
-    // version senza lookbehind (compat): spezza creando un separatore dopo [.?!] seguiti da spazio+lettera maiuscola
+    // version senza lookbehind: spezza creando un separatore dopo [.?!] seguiti da spazio+lettera maiuscola
     function splitSentences(t){
       t = cleanText(t);
-      // Inserisce un separatore "|" dopo . ? ! seguiti da spazio + Maiuscola (italiana)
       var marked = t.replace(/([\.!\?])\s+([A-ZÀ-Ú])/g, "$1|$2");
       var parts = marked.split("|");
       var out = [];
@@ -385,7 +384,6 @@
         else if (m4) owners.push(m4[1].trim());
       }
 
-      // de-dup
       function unique(arr){
         var seen = Object.create(null);
         var out = [];
@@ -475,7 +473,7 @@
       return out.trim();
     }
 
-    /* ---------- Gestione file & anteprima ---------- */
+    /* ---------- Gestione file & anteprima (con video) ---------- */
     async function handleFiles(files){
       for (var f=0; f<files.length; f++){
         var file = files[f];
@@ -488,7 +486,8 @@
           var isText  = (ext==='txt' || ext==='md');
           var isDocx  = (ext==='docx');
           var isPdf   = (ext==='pdf');
-          var isAudio = (['mp3','m4a','wav','ogg','webm'].indexOf(ext)!==-1);
+          var isAudio = (['mp3','m4a','wav','ogg'].indexOf(ext)!==-1);   // webm lo consideriamo video
+          var isVideo = (['mp4','mov','mkv','webm'].indexOf(ext)!==-1);
 
           if (isText){
             setRowStatus(li, 'lettura locale…');
@@ -562,11 +561,34 @@
           }
 
           if (isAudio){
-            setRowStatus(li, 'trascrizione…');
+            setRowStatus(li, 'trascrizione audio…');
             var uploadUrl = await getUploadUrl();
             var blobUrl   = await uploadToBlob(uploadUrl, file);
             var textA     = await transcribeWithUrl(blobUrl);
-            appendToNotes('Trascrizione: '+name, textA);
+            appendToNotes('Trascrizione audio: '+name, textA);
+            setRowStatus(li, 'trascritto');
+            continue;
+          }
+
+          if (isVideo){
+            // piccola anteprima video locale
+            setRowStatus(li, 'anteprima video…');
+            var url = URL.createObjectURL(file);
+            setPreviewHTML('');
+            var vid = document.createElement('video');
+            vid.controls = true;
+            vid.src = url;
+            vid.className = "w-full max-h-80 rounded-lg";
+            previewEl.appendChild(vid);
+
+            // upload + trascrizione lato server (come per audio)
+            setRowStatus(li, 'upload video…');
+            var uploadUrlV = await getUploadUrl();
+            var blobUrlV   = await uploadToBlob(uploadUrlV, file);
+
+            setRowStatus(li, 'trascrizione video…');
+            var textV     = await transcribeWithUrl(blobUrlV);
+            appendToNotes('Trascrizione video: '+name, textV);
             setRowStatus(li, 'trascritto');
             continue;
           }
