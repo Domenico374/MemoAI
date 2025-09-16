@@ -1,17 +1,14 @@
 // api/blob-url.js
-export const runtime = 'nodejs';
+export default function handler(req, res) {
+  // Consenti solo POST
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
-// Questa è una demo: ritorna un URL fittizio che accetta POST
-export default async function handler(req) {
-  return new Response(
-    JSON.stringify({
-      ok: true,
-      uploadUrl: "/api/echo",   // <-- endpoint fittizio per test
-      now: Date.now()
-    }),
-    {
-      headers: { "content-type": "application/json" },
-      status: 200
-    }
-  );
+  // Restituisce un URL fittizio da usare come "blob-url"
+  return res.status(200).json({
+    ok: true,
+    uploadUrl: "/api/echo",  // endpoint di test
+    now: Date.now()
+  });
 }
