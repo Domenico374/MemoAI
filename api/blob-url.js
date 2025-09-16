@@ -1,21 +1,54 @@
-// Restituisce l'endpoint interno che accetta l'upload reale
-export default async function handler(req, res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  if (req.method === "OPTIONS") return res.status(200).end();
+// api/blob-url.js
+export const config = { runtime: "edge" }; // usa Edge per il direct upload
+
+import blobPkg from "@vercel/blob";
+const { generateUploadUrl } = blobPkg;
+
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+export default async function handler(req) {
+  if (req.method === "OPTIONS")
+    return new Response(null, { status: 200, headers: CORS });
 
   if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
+    return new Response(
+      JSON.stringify({ ok: false, error: "Method not allowed" }),
+      { status: 405, headers: { ...CORS, "content-type": "application/json" } }
+    );
   }
 
-  const body = req.body && typeof req.body === "object" ? req.body : {};
-  const filename = (body.filename || `upload-${Date.now()}.mp4`).replace(/\s+/g, "_");
+  let body = {};
+  try { body = await req.json(); } catch (_) {}
+  const filename =
+    (body.filename || `upload-${Date.now()}.mp4`).replace(/\s+/g, "_");
+  const contentType = body.contentType || "video/mp4";
 
-  // Daremo al client un endpoint POST della tua app
-  return res.status(200).json({
-    ok: true,
-    uploadUrl: `/api/blob-upload?filename=${encodeURIComponent(filename)}`,
-    now: Date.now(),
-  });
+  try {
+    // con lo Store collegato al progetto NON serve passare token
+    const { url, pathname, expiration } = await generateUploadUrl({
+      pathname: `uploads/${filename}`,
+      access: "public",
+      contentType,
+    });
+
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        uploadUrl: url,      // <-- URL Vercel Blob (https://blob.vercel-storage.com/...)
+        blobPath: pathname,
+        expiresAt: expiration,
+        now: Date.now(),
+      }),
+      { status: 200, headers: { ...CORS, "content-type": "application/json" } }
+    );
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ ok: false, error: String(err?.message || err) }),
+      { status: 500, headers: { ...CORS, "content-type": "application/json" } }
+    );
+  }
 }
