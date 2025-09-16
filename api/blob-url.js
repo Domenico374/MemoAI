@@ -1,5 +1,5 @@
 // api/blob-url.js
-export const config = { runtime: "edge" }; // usa l’Edge runtime
+export const runtime = "edge"; // <-- importante: abilita Edge Function
 
 import blobPkg from "@vercel/blob";
 const { generateUploadUrl } = blobPkg;
@@ -15,15 +15,14 @@ export default async function handler(req) {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: CORS });
   }
-
   if (req.method !== "POST") {
-    return new Response(
-      JSON.stringify({ ok: false, error: "Method not allowed" }),
-      { status: 405, headers: CORS }
-    );
+    return new Response(JSON.stringify({ ok: false, error: "Method not allowed" }), {
+      status: 405,
+      headers: CORS,
+    });
   }
 
-  // leggi body in sicurezza
+  // body opzionale
   let filename = `upload-${Date.now()}.mp4`;
   let contentType = "video/mp4";
   try {
@@ -35,21 +34,17 @@ export default async function handler(req) {
   } catch {}
 
   try {
-    if (!generateUploadUrl) {
-      throw new Error("generateUploadUrl not available from @vercel/blob");
-    }
-
-    // lo Store è collegato al progetto → non serve token
     const { url, pathname, expiration } = await generateUploadUrl({
       pathname: `uploads/${filename}`,
-      access: "public",     // usa "private" se non vuoi URL pubblici
+      access: "public",      // usa "private" se vuoi nasconderli
       contentType,
+      // niente token: lo store è già connesso al progetto
     });
 
     return new Response(
       JSON.stringify({
         ok: true,
-        uploadUrl: url,      // <-- https://blob.vercel-storage.com/...
+        uploadUrl: url,       // <-- https://blob.vercel-storage.com/...
         blobPath: pathname,
         expiresAt: expiration,
         now: Date.now(),
@@ -57,9 +52,9 @@ export default async function handler(req) {
       { status: 200, headers: CORS }
     );
   } catch (err) {
-    return new Response(
-      JSON.stringify({ ok: false, error: String(err?.message || err) }),
-      { status: 500, headers: CORS }
-    );
+    return new Response(JSON.stringify({ ok: false, error: String(err?.message || err) }), {
+      status: 500,
+      headers: CORS,
+    });
   }
 }
