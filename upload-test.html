@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Upload Test – Vercel Blob</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; }
+  pre { background:#f6f6f6; padding:12px; border-radius:8px; overflow:auto; }
+  button { padding:8px 12px; border-radius:8px; border:1px solid #ddd; cursor:pointer; }
+</style>
+
+<h1>Upload Test – Vercel Blob</h1>
+
+<input id="file" type="file" />
+<button id="go">Carica</button>
+
+<h3>Risposta</h3>
+<pre id="out">—</pre>
+
+<script>
+const out = document.getElementById('out');
+
+document.getElementById('go').onclick = async () => {
+  const f = document.getElementById('file').files[0];
+  if (!f) return alert('Seleziona un file');
+
+  out.textContent = '1) chiedo l’URL...\n';
+  const r = await fetch('/api/blob-url', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ filename: f.name, contentType: f.type || 'application/octet-stream' })
+  });
+  const j = await r.json();
+  if (!j.ok || !j.uploadUrl) { out.textContent += '\nErrore: ' + JSON.stringify(j, null, 2); return; }
+
+  out.textContent += 'OK, uploadUrl ottenuto:\n' + j.uploadUrl + '\n2) carico il file...\n';
+  const up = await fetch(j.uploadUrl, { method: 'POST', body: f });
+
+  const publicUrl = 'https://blob.vercel-storage.com' + (j.blobPath || '');
+  out.textContent += `Upload status: ${up.status}\nPercorso: ${j.blobPath || '(sconosciuto)'}\nURL pubblico (stimato): ${publicUrl}\n`;
+};
+</script>
