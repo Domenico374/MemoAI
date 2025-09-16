@@ -13,44 +13,50 @@
 <h1>Upload Test – Vercel Blob</h1>
 
 <input id="file" type="file" />
-<button id="go" type="button">Carica</button>
+<button type="button" onclick="startUpload()">Carica</button>
 
 <h3>Risposta</h3>
 <pre id="out">—</pre>
 
 <script>
-const out = document.getElementById('out');
-const log = (l='') => (out.textContent += l + '\n');
+async function startUpload() {
+  const out = document.getElementById('out');
+  const fileInput = document.getElementById('file');
+  const f = fileInput.files[0];
+  if (!f) { alert('Seleziona un file'); return; }
 
-document.getElementById('go').onclick = async () => {
-  const f = document.getElementById('file').files[0];
-  if (!f) return alert('Seleziona un file');
   out.textContent = '1) chiedo l’URL...\n';
 
   try {
-    const r = await fetch('/api/blob-url', {
+    // uso il dominio lyart esplicito per evitare confusione di deploy
+    const r = await fetch('https://memo-ai-lyart.vercel.app/api/blob-url', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ filename: f.name, contentType: f.type || 'application/octet-stream' })
+      body: JSON.stringify({
+        filename: f.name,
+        contentType: f.type || 'application/octet-stream'
+      })
     });
-    const text = await r.text();
-    log(`/api/blob-url → HTTP ${r.status}`);
-    log(text);
 
+    const text = await r.text();
+    out.textContent += `/api/blob-url → HTTP ${r.status}\n${text}\n`;
     if (!r.ok) return;
 
     let j; try { j = JSON.parse(text); } catch { j = {}; }
-    if (!j.ok || !j.uploadUrl) { log('Risposta senza uploadUrl, stop.'); return; }
+    if (!j.uploadUrl) { out.textContent += 'uploadUrl assente, stop.\n'; return; }
 
-    log('\n2) carico il file...');
+    out.textContent += '\n2) carico il file...\n';
     const up = await fetch(j.uploadUrl, { method: 'POST', body: f });
     const upText = await up.text();
-    log(`upload → HTTP ${up.status}`);
-    log(upText);
+    out.textContent += `upload → HTTP ${up.status}\n${upText}\n`;
 
     if (up.ok) {
       const publicUrl = 'https://blob.vercel-storage.com' + (j.blobPath || '');
-      log(`\nFatto! Percorso: ${j.blobPath || '(sconosciuto)'}\nURL (stima): ${publicUrl}`);
+      out.textContent += `\nFatto!\nPercorso: ${j.blobPath || '(sconosciuto)'}\nURL (stima): ${publicUrl}\n`;
     }
   } catch (e) {
-    log('ERRORE JS: ' + (e && e.message ? e.message : e
+    out.textContent += 'ERRORE JS: ' + (e?.message || e) + '\n';
+  }
+}
+</script>
+</html>
