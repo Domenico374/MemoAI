@@ -84,11 +84,11 @@ export function withRateLimit(limits = {}) {
 
     const result = rateLimiter.checkLimit(identifier, limits);
 
-    // Headers informativi
-    res.set({
-      'X-RateLimit-Remaining': result.remaining || 0,
-      'X-RateLimit-Reset': result.resetTime || Math.ceil(Date.now() / 1000) + 60
-    });
+ // Headers informativi
+res.set({
+  'X-RateLimit-Remaining': result.remaining || 0,
+  'X-RateLimit-Reset': result.resetTime || Math.ceil(Date.now() / 1000) + 60
+});
 
     if (!result.allowed) {
       return res.status(429).json({
