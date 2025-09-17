@@ -1,4 +1,5 @@
 // api/format.js
+import { withRateLimit, RATE_LIMITS } from '../middleware/rateLimit.js';
 import OpenAI from "openai";
 
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -27,6 +28,10 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method === "GET") return res.status(200).json({ ok: true, route: "/api/format" });
   if (req.method !== "POST") return res.status(405).json({ message: "POST only" });
+
+  // Rate limiting
+  const rateLimitResult = withRateLimit(RATE_LIMITS.generation)(req, res, () => {});
+  if (rateLimitResult !== true) return;
 
   try {
     const { notes, metadati = {}, mode = "minutes" } = req.body || {};
@@ -61,7 +66,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, verbale: out });
     }
 
-    // minutes “classico”
+    // minutes "classico"
     if (mode === "minutes") {
       const system = `Sei un assistente che crea verbali chiari e professionali in italiano.
 Segui questa struttura:
