@@ -1,1425 +1,242 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Memo AI - Enhanced</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-  <script>
-    document.addEventListener('DOMContentLoaded', function(){
-      var lib = window.pdfjsLib || (window['pdfjs-dist/build/pdf'] || null);
-      if (lib && lib.GlobalWorkerOptions) {
-        lib.GlobalWorkerOptions.workerSrc =
-          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
-        window.pdfjsLib = lib;
-      }
-    });
-  </script>
-  
-  <style>
-    /* ====== Tema & sfondo pastello ====== */
-    :root{
-      --bg1:#e0f2fe; --bg2:#e9d5ff; --bg3:#fce7f3;
-      --baseBG:#f5f7fb; --cardBG:#ffffff;
-    }
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Memo AI</title>
+<style>
+  /* Container principale */
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #f9fafb;
+    color: #333;
+    margin: 0; padding: 0;
+  }
+  #app {
+    max-width: 720px;
+    margin: 30px auto;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(100,100,100,0.07);
+    padding: 30px 40px;
+  }
 
-    .theme-ocean  { --bg1:#e0f2fe; --bg2:#e9d5ff; --bg3:#fce7f3; --baseBG:#f6fbff; --cardBG:#ffffffee; }
-    .theme-sunset { --bg1:#fde68a; --bg2:#fca5a5; --bg3:#a7f3d0; --baseBG:#fff8f3; --cardBG:#ffffffee; }
-    .theme-mint   { --bg1:#bbf7d0; --bg2:#a7f3d0; --bg3:#bfdbfe; --baseBG:#f6fff9; --cardBG:#ffffffee; }
-    .theme-aqua   { --bg1:#b9ffe9; --bg2:#bfe8ff; --bg3:#e8fff7; --baseBG:#effef9; --cardBG:#ffffffee; }
+  h1 {
+    font-size: 1.8rem;
+    color: #1571e8;
+    margin-bottom: 0.5rem;
+  }
 
-    body{
-      background: var(--baseBG);
-      min-height:100vh; position:relative;
-    }
-    body::before{
-      content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
-      background:
-        radial-gradient(600px 360px at -5% -10%, var(--bg1) 0%, transparent 60%),
-        radial-gradient(720px 420px at 105% -10%, var(--bg2) 0%, transparent 60%),
-        radial-gradient(800px 520px at 50% 110%, var(--bg3) 0%, transparent 60%);
-      filter: blur(12px) saturate(110%);
-      opacity:.5;
-    }
+  h2 {
+    font-weight: 600;
+    color: #121317;
+    margin: 10px 0 8px;
+  }
 
-    section.bg-white{
-      background: var(--cardBG) !important;
-      backdrop-filter: saturate(115%) blur(.5px);
-      border: 1px solid rgba(15,23,42,.04);
-    }
+  .section {
+    margin-bottom: 24px;
+  }
 
-    .prose :where(h1,h2,h3){margin:.25rem 0 .5rem}
+  /* Pulsanti */
+  button {
+    font-weight: 600;
+    border-radius: 10px;
+    border: none;
+    padding: 8px 20px;
+    cursor: pointer;
+    transition: box-shadow 0.22s;
+    box-shadow: 0 2px 8px rgba(50, 159, 255, 0.1);
+  }
+  button:disabled {
+    background: #cbd5e1;
+    color: #7a7a7a;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+  .btn-primary {
+    background: linear-gradient(90deg, #329FFF, #71C7E3);
+    color: white;
+    margin-left: 16px;
+  }
+  .btn-primary:hover:not(:disabled) {
+    box-shadow: 0 6px 16px rgba(113, 199, 227, 0.3);
+  }
+  .btn-secondary {
+    background: #f3f4f6;
+    color: #374151;
+  }
+  /* Input file */
+  input[type="file"] {
+    font-size: 14px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid #d1d5db;
+    cursor: pointer;
+  }
 
-    /* ====== Toast notifications ====== */
-    .toast {
-      animation: slideIn 0.3s ease-out;
-      backdrop-filter: blur(8px);
-      border: 1px solid rgba(255,255,255,0.2);
-    }
-    .toast.removing {
-      animation: slideOut 0.3s ease-in;
-    }
-    @keyframes slideIn {
-      from { transform: translateX(100%); opacity: 0; }
-      to { transform: translateX(0); opacity: 1; }
-    }
-    @keyframes slideOut {
-      from { transform: translateX(0); opacity: 1; }
-      to { transform: translateX(100%); opacity: 0; }
-    }
+  /* Textarea appunti */
+  textarea {
+    width: 100%;
+    height: 140px;
+    resize: vertical;
+    border-radius: 10px;
+    border: 1px solid #ccc;
+    padding: 12px 15px;
+    font-family: inherit;
+    font-size: 1rem;
+    color: #242424;
+  }
 
-    /* ====== Pulsanti colorati + stati migliorati ====== */
-    :root{
-      --radius:10px;
-      --muted:#e2e8f0; --secondary:#6366f1; --success:#10b981; --primary:#2563eb; --danger:#ef4444;
-      --cyan:#06b6d4; --fuchsia:#d946ef; --amber:#f59e0b; --teal:#14b8a6;
-    }
-    
-    .btn{
-      -webkit-tap-highlight-color:transparent;
-      appearance:none; border:1px solid transparent;
-      border-radius:var(--radius);
-      padding:8px 14px; 
-      font:600 14px/1 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
-      cursor:pointer; 
-      transition:all 0.2s ease;
-      display:inline-flex; 
-      align-items:center; 
-      gap:.5rem;
-      box-shadow:0 1px 0 rgba(15,23,42,.06);
-      position: relative;
-      overflow: hidden;
-    }
-    
-    .btn:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    }
-    
-    .btn:active { 
-      transform: translateY(0) scale(.98); 
-    }
-    
-    .btn:focus-visible{ 
-      outline:0; 
-      box-shadow:0 0 0 3px rgba(37,99,235,.25); 
-    }
-    
-    .btn[disabled] { 
-      opacity:.55; 
-      cursor:not-allowed;
-      transform: none !important;
-    }
+  /* Layout in griglia semplice per analisi */
+  .grid-2x2 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    column-gap: 25px;
+    row-gap: 12px;
+  }
+  .card {
+    background: #f3f6fb;
+    border-radius: 12px;
+    padding: 15px 20px;
+    height: 100px;
+  }
+  .card h3 {
+    margin: 0 0 6px;
+    font-size: 1.1rem;
+    color: #2563eb;
+  }
+  .card p {
+    margin: 0;
+    color: #555;
+    font-size: 0.9rem;
+  }
 
-    .btn--muted{     background:var(--muted);     color:#0b1220; } .btn--muted:hover{ filter:brightness(.97); }
-    .btn--secondary{ background:var(--secondary); color:#fff; }   .btn--secondary:hover{ filter:brightness(.95); }
-    .btn--success{   background:var(--success);   color:#fff; }   .btn--success:hover{ filter:brightness(.95); }
-    .btn--primary{   background:var(--primary);   color:#fff; }   .btn--primary:hover{ filter:brightness(.95); }
-    .btn--danger{    background:var(--danger);    color:#fff; }   .btn--danger:hover{ filter:brightness(.95); }
-    .btn--cyan{      background:var(--cyan);      color:#fff; }   .btn--cyan:hover{ filter:brightness(.95); }
-    .btn--fuchsia{   background:var(--fuchsia);   color:#fff; }   .btn--fuchsia:hover{ filter:brightness(.95); }
-    .btn--amber{     background:var(--amber);     color:#0b1220; } .btn--amber:hover{ filter:brightness(.97); }
-    .btn--teal{      background:var(--teal);      color:#fff; }   .btn--teal:hover{ filter:brightness(.95); }
+  /* Box verbale bpm */
+  #verbale-box {
+    background: #f3f6fb;
+    border-radius: 12px;
+    padding: 18px 20px;
+    font-size: 1rem;
+    line-height: 1.4;
+    min-height: 80px;
+  }
 
-    .btn.is-active{ 
-      box-shadow:0 0 0 3px rgba(16,185,129,.2), 0 6px 14px rgba(2,6,23,.12); 
-    }
-    
-    .btn.is-loading{ 
-      pointer-events:none;
-    }
-    
-    .btn.is-loading::after{
-      content:""; 
-      width:16px; 
-      height:16px; 
-      border:2px solid currentColor; 
-      border-top-color:transparent;
-      border-radius:50%;
-      position:absolute; 
-      right:12px; 
-      animation:spin .8s linear infinite;
-    }
-    
-    @keyframes spin{ 
-      to{ transform:rotate(360deg) } 
-    }
-
-    .pill{ 
-      font:600 12px/1 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
-      transition: all 0.2s ease;
-    }
-
-    /* ====== Progress bar migliorata ====== */
-    .progress-container {
-      position: relative;
-      background: rgba(0,0,0,0.1);
-      border-radius: 8px;
-      overflow: hidden;
-      height: 4px;
-      margin: 8px 0;
-    }
-    
-    .progress-bar {
-      height: 100%;
-      background: linear-gradient(90deg, #3b82f6, #06b6d4);
-      border-radius: 8px;
-      transition: width 0.3s ease;
-      position: relative;
-    }
-    
-    .progress-bar::after {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
-      animation: shimmer 1.5s infinite;
-    }
-    
-    @keyframes shimmer {
-      0% { transform: translateX(-100%); }
-      100% { transform: translateX(100%); }
-    }
-
-    /* ====== Status badges ====== */
-    .status-badge {
-      padding: 2px 8px;
-      border-radius: 12px;
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    
-    .status-badge.success {
-      background: #dcfce7;
-      color: #166534;
-    }
-    
-    .status-badge.error {
-      background: #fee2e2;
-      color: #dc2626;
-    }
-    
-    .status-badge.processing {
-      background: #fef3c7;
-      color: #d97706;
-    }
-    
-    .status-badge.pending {
-      background: #f1f5f9;
-      color: #475569;
-    }
-
-    /* ===== Drag & Drop migliorato ===== */
-    .dropzone {
-      border:2px dashed #0ea5e9;
-      border-radius:12px;
-      transition: all 0.3s ease;
-      position: relative;
-    }
-    
-    .dropzone.is-dragover {
-      background:rgba(14,165,233,.08);
-      border-color:#38bdf8;
-      transform: scale(1.02);
-      box-shadow: 0 8px 32px rgba(14,165,233,0.2);
-    }
-    
-    .dropzone::before {
-      content: 'Trascina i file qui o clicca per selezionare';
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      pointer-events: none;
-      color: #64748b;
-      font-size: 14px;
-      opacity: 0;
-      transition: opacity 0.3s ease;
-      text-align: center;
-    }
-    
-    .dropzone.is-dragover::before {
-      opacity: 1;
-    }
-
-    /* ====== Auto-save indicator ====== */
-    .save-indicator {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      padding: 8px 16px;
-      background: rgba(0,0,0,0.8);
-      color: white;
-      border-radius: 20px;
-      font-size: 12px;
-      opacity: 0;
-      transition: opacity 0.3s ease;
-      pointer-events: none;
-      z-index: 1000;
-    }
-    
-    .save-indicator.show {
-      opacity: 1;
-    }
-
-    /* ====== Fullscreen preview ====== */
-    .fullscreen-overlay {
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.9);
-      z-index: 9999;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      opacity: 0;
-      visibility: hidden;
-      transition: all 0.3s ease;
-    }
-    
-    .fullscreen-overlay.active {
-      opacity: 1;
-      visibility: visible;
-    }
-    
-    .fullscreen-content {
-      background: white;
-      border-radius: 12px;
-      padding: 20px;
-      max-width: 90vw;
-      max-height: 90vh;
-      overflow: auto;
-      position: relative;
-    }
-    
-    .fullscreen-close {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      background: #ef4444;
-      color: white;
-      border: none;
-      border-radius: 50%;
-      width: 32px;
-      height: 32px;
-      cursor: pointer;
-      font-size: 16px;
-    }
-  </style>
+  /* Barra di info in alto */
+  #info-bar {
+    margin-bottom: 20px;
+    font-size: 0.85rem;
+    color: #2489f3;
+  }
+</style>
 </head>
+<body>
+  <div id="app">
+    <h1>Memo AI</h1>
+    <div id="info-bar" aria-live="polite">
+      File elaborati: 0 | Ultima attività: -
+    </div>
 
-<body class="text-slate-800 theme-aqua">
-  <!-- Toast Container -->
-  <div id="toastContainer" class="fixed top-4 right-4 z-50 space-y-2"></div>
-  
-  <!-- Auto-save Indicator -->
-  <div id="saveIndicator" class="save-indicator">Salvato</div>
-  
-  <!-- Fullscreen Overlay -->
-  <div id="fullscreenOverlay" class="fullscreen-overlay">
-    <div class="fullscreen-content">
-      <button class="fullscreen-close" onclick="closeFullscreen()">✕</button>
-      <div id="fullscreenContent"></div>
+    <div class="section" aria-label="Carica file">
+      <h2>Carica file</h2>
+      <input type="file" id="fileInput" aria-describedby="fileHelp" />
+      <button id="uploadBtn" class="btn-primary">Carica e Trascrivi</button>
+      <p id="fileHelp" style="font-size:0.85rem; color:#666;">
+        Suggerimento: per file > 4.5 MB usare versioni ridotte. I PDF richiederanno OCR.
+      </p>
+    </div>
+
+    <div class="section" aria-label="Anteprima">
+      <h2>Anteprima</h2>
+      <div id="previewBox" style="min-height:60px; padding: 8px; border: 1px solid #ddd; border-radius: 8px; background:#fdfdfd; overflow-wrap: break-word; font-size: 0.9rem;">
+        L'anteprima comparirà qui...
+      </div>
+      <button id="fullScreenBtn" class="btn-secondary" style="margin-top:10px;">Schermo intero</button>
+      <button id="clearPreviewBtn" class="btn-secondary" style="margin-top:10px; margin-left:10px;">Pulisci anteprima</button>
+    </div>
+
+    <div class="section" aria-label="Appunti">
+      <h2>Appunti</h2>
+      <textarea id="notesArea" placeholder="Appunti trascritti o estratti..."></textarea>
+      <div style="margin-top: 12px;">
+        <button class="btn-secondary" id="clearNotesBtn">Pulizia</button>
+        <button class="btn-primary" id="verbaleBtn">Verbale</button>
+        <button class="btn-primary" id="transcribeBtn" style="background:#4ade80; margin-left:10px;">Trascrizione</button>
+        <button class="btn-primary" id="generateVerbaleBtn" style="background:#3b82f6; margin-left:10px;">Genera verbale</button>
+        <button class="btn-primary" id="resetBtn" style="background:#ef4444; margin-left:10px;">Resettare</button>
+      </div>
+    </div>
+
+    <div class="section" aria-label="Analisi intelligente">
+      <h2>Analisi intelligente</h2>
+      <div class="grid-2x2">
+        <div class="card">
+          <h3>Riassunto</h3><p>---</p>
+        </div>
+        <div class="card">
+          <h3>Punti salienti</h3><p>---</p>
+        </div>
+        <div class="card">
+          <h3>To-Do</h3><p>---</p>
+        </div>
+        <div class="card">
+          <h3>Tag suggeriti</h3><p>---</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="section" aria-label="Verbale">
+      <h2>Verbale</h2>
+      <div id="verbale-box">Il verbale comparirà qui...</div>
+      <button class="btn-secondary" style="margin-top: 10px; margin-right: 10px;">Copiare</button>
+      <button class="btn-secondary" style="margin-top: 10px; margin-right: 10px;">Scarica .md</button>
+      <button class="btn-secondary" style="margin-top: 10px;">PDF</button>
     </div>
   </div>
 
-  <div class="max-w-4xl mx-auto p-6">
-    <!-- Header migliorato -->
-    <header class="mb-6 flex items-center justify-between gap-3">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center text-white font-bold text-lg">
-          M
-        </div>
-        <div>
-          <h1 class="text-3xl font-bold">Memo AI</h1>
-          <p class="text-sm text-slate-600">Upload file → Trascrizione / Estrazione → Formattazione</p>
-        </div>
-      </div>
-
-      <div class="flex items-center gap-3">
-        <!-- Statistiche di sessione -->
-        <div class="hidden sm:block text-right text-xs text-slate-500">
-          <div>File elaborati: <span id="fileCount">0</span></div>
-          <div>Ultima attività: <span id="lastActivity">-</span></div>
-        </div>
-        
-        <span id="healthBadge" class="text-xs px-2.5 py-1 rounded-full bg-slate-200 text-slate-700">checking…</span>
-        
-        <!-- Theme toggle -->
-        <div class="hidden sm:flex items-center gap-1 ml-2">
-          <button data-theme="ocean"  class="pill px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200">Ocean</button>
-          <button data-theme="sunset" class="pill px-2.5 py-1 rounded-full bg-rose-100 text-rose-700 hover:bg-rose-200">Sunset</button>
-          <button data-theme="mint"   class="pill px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200">Mint</button>
-          <button data-theme="aqua"   class="pill px-2.5 py-1 rounded-full bg-teal-100 text-teal-700 hover:bg-teal-200">Aqua</button>
-        </div>
-      </div>
-    </header>
-
-    <!-- Upload migliorato -->
-    <section class="bg-white rounded-2xl shadow p-5 mb-6" id="dropArea">
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <h2 class="text-lg font-semibold flex items-center gap-2">
-            Carica file
-            <span id="queueCounter" class="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full">0 in coda</span>
-          </h2>
-          <p class="text-xs text-slate-500 mt-1">
-            Suggerimento: per file &gt; 4.5 MB usare versioni ridotte. I PDF scansionati richiederanno OCR.
-          </p>
-        </div>
-        <div class="flex gap-2">
-          <button id="btnClearQueue" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200 disabled:opacity-50" disabled>Pulisci coda</button>
-          <button id="btnUpload" type="button" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Seleziona file</button>
-        </div>
-      </div>
-
-      <div id="globalProgress" class="progress-container mt-4" style="display: none;">
-        <div class="progress-bar" style="width: 0%"></div>
-      </div>
-
-      <ul id="queue" class="mt-4 space-y-2 text-sm"></ul>
-      <input id="uploader" type="file" multiple
-             accept=".txt,.md,.pdf,.docx,.mp3,.m4a,.wav,.ogg,.webm,.mp4,.mov,.mkv"
-             class="hidden" />
-    </section>
-
-    <!-- Anteprima migliorata -->
-    <section class="bg-white rounded-2xl shadow p-5 mb-6">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold">Anteprima</h2>
-        <div class="flex gap-2">
-          <button id="btnFullscreen" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Schermo intero</button>
-          <button id="btnClearPreview" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Pulisci anteprima</button>
-        </div>
-      </div>
-      <div id="preview" class="prose max-w-none border border-slate-200 rounded-xl p-4 bg-slate-50 text-sm">
-        <p class="text-slate-500">L'anteprima comparirà qui…</p>
-      </div>
-    </section>
-
-    <!-- Appunti -->
-    <section class="bg-white rounded-2xl shadow p-5 mb-6">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold">Appunti</h2>
-        <div class="flex items-center gap-2 text-xs text-slate-500">
-          <span id="charCount">0 caratteri</span>
-          <span id="autoSaveStatus">●</span>
-        </div>
-      </div>
-      <textarea id="notes" rows="12"
-        class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-        placeholder="Appunti trascritti o estratti…"></textarea>
-
-      <div class="mt-4 flex flex-wrap gap-2">
-        <button id="btnClean"       class="btn btn--muted">Pulizia</button>
-        <button id="btnMinutesAI"   class="btn btn--secondary">Verbale</button>
-        <button id="btnTranscribe"  class="btn btn--success">Trascrizione</button>
-        <button id="btnGenerate"    class="btn btn--primary">Genera verbale</button>
-        <button id="btnReset"       class="btn btn--danger">Resettare</button>
-      </div>
-    </section>
-
-    <!-- Analisi intelligente -->
-    <section class="bg-white rounded-2xl shadow p-5 mb-6">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold">Analisi intelligente</h2>
-        <div class="flex flex-wrap gap-2">
-          <button id="btnSummarize"   class="btn btn--cyan">Riassunto</button>
-          <button id="btnHighlights"  class="btn btn--fuchsia">Punti salienti</button>
-          <button id="btnTodos"       class="btn btn--amber">To-Do</button>
-          <button id="btnSuggestTags" class="btn btn--teal">Suggerisci tag</button>
-        </div>
-      </div>
-
-      <div class="grid gap-4 md:grid-cols-2">
-        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
-          <h3 class="font-medium mb-2">Riassunto</h3>
-          <div id="summaryBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
-        </div>
-        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
-          <h3 class="font-medium mb-2">Punti salienti</h3>
-          <div id="highlightsBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
-        </div>
-        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
-          <h3 class="font-medium mb-2">To-Do</h3>
-          <div id="todoBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
-        </div>
-        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
-          <h3 class="font-medium mb-2">Tag suggeriti</h3>
-          <div id="tagsBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Verbale -->
-    <section class="bg-white rounded-2xl shadow p-5">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold">Verbale</h2>
-        <div class="flex gap-2">
-          <button id="btnCopy" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Copiare</button>
-          <button id="btnDownload" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Scarica .md</button>
-          <button id="btnExportPDF" class="px-3 py-2 rounded-lg text-sm bg-blue-100 hover:bg-blue-200 text-blue-700">PDF</button>
-        </div>
-      </div>
-      <pre id="result" class="whitespace-pre-wrap text-sm leading-6 text-slate-800">Il verbale comparirà qui…</pre>
-    </section>
-  </div>
-
   <script>
-    /* ========== Theme toggle ========== */
-    (function(){
-      const saved = localStorage.getItem('memoai_theme') || 'aqua';
-      document.body.classList.remove('theme-ocean','theme-sunset','theme-mint','theme-aqua');
-      document.body.classList.add('theme-'+saved);
-      document.querySelectorAll('[data-theme]').forEach(btn=>{
-        btn.addEventListener('click', ()=>{
-          const t = btn.dataset.theme;
-          document.body.classList.remove('theme-ocean','theme-sunset','theme-mint','theme-aqua');
-          document.body.classList.add('theme-'+t);
-          localStorage.setItem('memoai_theme', t);
+    // Questo script andrà adattato sulle funzionalità di caricamento e interazione attuale
+    document.getElementById('uploadBtn').addEventListener('click', async () => {
+      const fileInput = document.getElementById('fileInput');
+      if (!fileInput.files.length) {
+        alert('Seleziona un file prima di caricare');
+        return;
+      }
+      const file = fileInput.files[0];
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const response = await fetch('/api/whisper', {
+          method: 'POST',
+          body: formData,
         });
-      });
-    })();
-
-    /* ========== Sistema di notifiche toast ========== */
-    function showToast(message, type = 'info', duration = 3000) {
-      const container = document.getElementById('toastContainer');
-      const toast = document.createElement('div');
-      
-      const colors = {
-        success: 'bg-green-500 text-white',
-        error: 'bg-red-500 text-white',
-        warning: 'bg-yellow-500 text-black',
-        info: 'bg-blue-500 text-white'
-      };
-      
-      toast.className = `toast px-4 py-2 rounded-lg shadow-lg ${colors[type] || colors.info}`;
-      toast.textContent = message;
-      
-      container.appendChild(toast);
-      
-      setTimeout(() => {
-        toast.classList.add('removing');
-        setTimeout(() => toast.remove(), 300);
-      }, duration);
-      
-      return toast;
-    }
-
-    /* ========== Statistiche di sessione ========== */
-    let sessionStats = {
-      filesProcessed: 0,
-      lastActivity: null
-    };
-
-    function updateStats() {
-      document.getElementById('fileCount').textContent = sessionStats.filesProcessed;
-      document.getElementById('lastActivity').textContent = 
-        sessionStats.lastActivity ? new Date(sessionStats.lastActivity).toLocaleTimeString() : '-';
-    }
-
-    function incrementFileCount() {
-      sessionStats.filesProcessed++;
-      sessionStats.lastActivity = Date.now();
-      updateStats();
-    }
-
-    /* ========== Auto-save migliorato ========== */
-    let autoSaveTimeout;
-    let lastSaved = '';
-
-    function scheduleAutoSave() {
-      clearTimeout(autoSaveTimeout);
-      const status = document.getElementById('autoSaveStatus');
-      status.textContent = '●';
-      status.className = 'text-yellow-500';
-      
-      autoSaveTimeout = setTimeout(autoSave, 2000);
-    }
-
-    function autoSave() {
-      const notes = document.getElementById('notes')?.value || '';
-      if (notes === lastSaved) return;
-      
-      const data = {
-        notes,
-        summary: document.getElementById('summaryBox')?.textContent || '',
-        highlights: document.getElementById('highlightsBox')?.textContent || '',
-        todos: document.getElementById('todoBox')?.textContent || '',
-        tags: document.getElementById('tagsBox')?.textContent || '',
-        result: document.getElementById('result')?.textContent || '',
-        timestamp: Date.now()
-      };
-      
-      try {
-        localStorage.setItem('memoai_autosave', JSON.stringify(data));
-        lastSaved = notes;
-        
-        const status = document.getElementById('autoSaveStatus');
-        status.textContent = '●';
-        status.className = 'text-green-500';
-        
-        const indicator = document.getElementById('saveIndicator');
-        indicator.classList.add('show');
-        setTimeout(() => indicator.classList.remove('show'), 2000);
-        
-      } catch (e) {
-        showToast('Impossibile salvare automaticamente', 'warning');
-        const status = document.getElementById('autoSaveStatus');
-        status.textContent = '●';
-        status.className = 'text-red-500';
-      }
-    }
-
-    function autoLoad() {
-      try {
-        const saved = localStorage.getItem('memoai_autosave');
-        if (saved) {
-          const data = JSON.parse(saved);
-          const age = Date.now() - data.timestamp;
-          if (age < 24 * 60 * 60 * 1000) {
-            document.getElementById('notes').value = data.notes || '';
-            document.getElementById('summaryBox').textContent = data.summary || '—';
-            document.getElementById('highlightsBox').textContent = data.highlights || '—';
-            document.getElementById('todoBox').textContent = data.todos || '—';
-            document.getElementById('tagsBox').textContent = data.tags || '—';
-            if (data.result && data.result !== 'Il verbale comparirà qui…') {
-              document.getElementById('result').textContent = data.result;
-            }
-            lastSaved = data.notes || '';
-            showToast('Sessione precedente ripristinata', 'info');
-            updateCharCount();
-          }
+        if (!response.ok) {
+          throw new Error('Errore server: ' + response.statusText);
         }
-      } catch (e) {
-        console.warn('Errore nel caricamento automatico:', e);
+        const data = await response.json();
+        // Aggiorna anteprima e notes con trascritto
+        document.getElementById('previewBox').textContent = `Trascrizione:\n${data.text}`;
+        document.getElementById('notesArea').value = data.text;
+      } catch (error) {
+        alert('Errore durante upload: ' + error.message);
+        console.error(error);
       }
-    }
-
-    /* ========== Gestione coda file migliorata ========== */
-    let fileQueue = [];
-    
-    function updateQueueCounter() {
-      const counter = document.getElementById('queueCounter');
-      const clearBtn = document.getElementById('btnClearQueue');
-      
-      counter.textContent = `${fileQueue.length} in coda`;
-      clearBtn.disabled = fileQueue.length === 0;
-      
-      // Aggiorna progress globale
-      const processing = fileQueue.filter(f => f.status === 'processing').length;
-      const globalProgress = document.getElementById('globalProgress');
-      if (processing > 0) {
-        globalProgress.style.display = 'block';
-        const completed = fileQueue.filter(f => f.status === 'success').length;
-        const total = fileQueue.length;
-        const progress = total > 0 ? (completed / total) * 100 : 0;
-        globalProgress.querySelector('.progress-bar').style.width = `${progress}%`;
-      } else {
-        globalProgress.style.display = 'none';
-      }
-    }
-
-    function addToQueue(file, status = 'pending') {
-      const queueItem = {
-        id: Date.now() + Math.random(),
-        file,
-        status,
-        progress: 0,
-        startTime: Date.now()
-      };
-      
-      fileQueue.push(queueItem);
-      updateQueueCounter();
-      renderQueueItem(queueItem);
-      return queueItem;
-    }
-
-    function getStatusText(status) {
-      const statusMap = {
-        pending: 'In attesa',
-        processing: 'Elaborando',
-        success: 'Completato',
-        error: 'Errore'
-      };
-      return statusMap[status] || status;
-    }
-
-    function renderQueueItem(item) {
-      const li = document.createElement('li');
-      li.className = "border rounded-lg px-3 py-3 flex items-center justify-between transition-all duration-200 hover:bg-slate-50";
-      li.dataset.id = item.id;
-      
-      li.innerHTML = `
-        <div class="flex-1">
-          <div class="font-medium">${item.file.name}</div>
-          <div class="text-slate-500 text-xs flex items-center gap-2 mt-1">
-            ${item.file.type || '(sconosciuto)'} • ${(item.file.size / 1024).toFixed(1)} KB
-            <span class="status-badge ${item.status}">${getStatusText(item.status)}</span>
-          </div>
-          <div class="progress-container mt-2" style="display: ${item.progress > 0 ? 'block' : 'none'}">
-            <div class="progress-bar" style="width: ${item.progress}%"></div>
-          </div>
-        </div>
-        <div class="ml-3 flex gap-1">
-          <button onclick="removeFromQueue('${item.id}')" class="text-red-500 hover:text-red-700 text-sm px-2 py-1 rounded hover:bg-red-50 transition-colors">×</button>
-        </div>
-      `;
-      
-      document.getElementById('queue').appendChild(li);
-    }
-
-    function updateQueueItem(id, updates) {
-      const item = fileQueue.find(q => q.id === id);
-      if (!item) return;
-      
-      Object.assign(item, updates);
-      
-      const li = document.querySelector(`li[data-id="${id}"]`);
-      if (!li) return;
-      
-      const statusBadge = li.querySelector('.status-badge');
-      const progressContainer = li.querySelector('.progress-container');
-      const progressBar = li.querySelector('.progress-bar');
-      
-      if (statusBadge) {
-        statusBadge.textContent = getStatusText(item.status);
-        statusBadge.className = `status-badge ${item.status}`;
-      }
-      
-      if (progressContainer && progressBar) {
-        progressContainer.style.display = item.progress > 0 ? 'block' : 'none';
-        progressBar.style.width = `${item.progress}%`;
-      }
-      
-      updateQueueCounter();
-    }
-
-    function removeFromQueue(id) {
-      fileQueue = fileQueue.filter(q => q.id !== id);
-      const li = document.querySelector(`li[data-id="${id}"]`);
-      if (li) li.remove();
-      updateQueueCounter();
-    }
-
-    /* ========== Helpers UI ========== */
-    function $(s){ return document.querySelector(s); }
-    var queueEl   = $('#queue');
-    var previewEl = $('#preview');
-
-    function appendToNotes(header, text){
-      var ta = $('#notes');
-      var section = (header ? "["+header+"]\n" : "") + (text || "");
-      ta.value = (ta.value ? ta.value + "\n---\n" : "") + section;
-      updateCharCount();
-      scheduleAutoSave();
-    }
-
-    function setPreviewHTML(html){
-      previewEl.innerHTML = html || '<p class="text-slate-500">L\'anteprima comparirà qui…</p>';
-    }
-
-    function escapeHTML(s){
-      s = String(s || ""); 
-      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    }
-
-    function arrayBufferToDataURL(ab, mime){
-      mime = mime || 'application/pdf';
-      var bytes = new Uint8Array(ab), bin = '';
-      for (var i=0;i<bytes.length;i++) bin += String.fromCharCode(bytes[i]);
-      return 'data:'+mime+';base64,'+btoa(bin);
-    }
-
-    function updateCharCount() {
-      const notes = document.getElementById('notes')?.value || '';
-      document.getElementById('charCount').textContent = `${notes.length} caratteri`;
-    }
-
-    /* ========== Health check ========== */
-    async function health(){
-      var badge = $('#healthBadge');
-      try {
-        var u = await fetch('/api/upload', { method: 'OPTIONS' });
-        var e = await fetch('/api/extract', { method: 'OPTIONS' });
-        if (u.ok && e.ok) {
-          badge.textContent = 'API ok';
-          badge.className = "text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700";
-        } else {
-          badge.textContent = 'API parziali';
-          badge.className = "text-xs px-2.5 py-1 rounded-full bg-amber-100 text-amber-700";
-        }
-      } catch(err){
-        badge.textContent = 'API offline';
-        badge.className = "text-xs px-2.5 py-1 rounded-full bg-rose-100 text-rose-700";
-      }
-    }
-
-    /* ========== API helpers ========== */
-    async function uploadViaApi(file){
-      const fd = new FormData();
-      fd.append('file', file, file.name || 'file');
-      fd.append('contentType', file.type || 'application/octet-stream');
-
-      const r = await fetch('/api/upload', { method:'POST', body: fd });
-      const j = await r.json().catch(()=>({}));
-      if (!r.ok || !(j && j.data && j.data.url)) {
-        throw new Error((j && j.details) || 'Upload fallito');
-      }
-      return j.data.url;
-    }
-
-    async function extractWithUrl(blobUrl, name){
-      var r = await fetch('/api/extract', {
-        method:'POST', 
-        headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify({ fileUrl: blobUrl, fileName: name })
-      });
-      var j; try { j = await r.json(); } catch(e){ j = {}; }
-      if (!r.ok) throw new Error((j && j.message) || 'Errore estrazione');
-      return (j && (j.text || j.content || j.result)) || '';
-    }
-
-    async function transcribeWithUrl(blobUrl){
-      var r = await fetch('/api/whisper', {
-        method:'POST', 
-        headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify({ url: blobUrl })
-      });
-      var j; try { j = await r.json(); } catch(e){ j = {}; }
-      if (!r.ok || !(j && j.ok)) throw new Error((j && j.message) || 'Errore trascrizione');
-      return (j && j.text) || '';
-    }
-
-    /* ========== Fallback locali ========== */
-    function cleanText(t){
-      t = String(t || "");
-      return t.replace(/\r/g,"").replace(/[ \t]+\n/g,"\n").replace(/\n{3,}/g,"\n\n").replace(/[ \t]{2,}/g," ").trim();
-    }
-
-    function toMinutes(t){
-      var lines = cleanText(t).split("\n").filter(Boolean);
-      var bullets = lines.map(l=>"- " + l.trim()).join("\n");
-      var date = new Date().toLocaleString();
-      return "# Verbale\n_Data:_ "+date+"\n\n## Punti trattati\n"+bullets+"\n";
-    }
-
-    function toTranscriptLocal(t){
-      return cleanText(String(t||"")
-        .replace(/\[?\(?\b\d{1,2}:\d{2}(?::\d{2})?\)?\]?/g, "")
-        .replace(/\b(eh+m*|mm+|mah|cioè|tipo|allora)\b/gi, "")
-        .replace(/(?:\n?\s*[•\-–]\s+)/g, "\n"));
-    }
-
-    async function callTextAPI(endpoints, payload){
-      for (const ep of (endpoints||[])){
-        try{
-          const r = await fetch(ep,{
-            method:"POST",
-            headers:{"Content-Type":"application/json"},
-            body:JSON.stringify(payload)
-          });
-          const j = await r.json().catch(()=>({}));
-          if (r.ok){
-            const out = (j && (j.text || j.verbale || j.content || j.result)) || "";
-            if (out && typeof out === "string") return out;
-          }
-        }catch(_){ }
-      }
-      return "";
-    }
-
-    /* ========== PDF locale ========== */
-    async function extractPdfTextLocal(ab, maxPages){
-      maxPages=maxPages||8;
-      const pdf=await window.pdfjsLib.getDocument({data:ab}).promise;
-      let out=''; const n=Math.min(pdf.numPages, maxPages);
-      for (let i=1;i<=n;i++){
-        const page=await pdf.getPage(i); 
-        const content=await page.getTextContent();
-        out += content.items.map(it=>it.str).join(' ') + '\n\n';
-      }
-      if (pdf.numPages>n) out += "\n[... testo troncato a "+n+"/"+pdf.numPages+" pagine ...]\n";
-      return out.trim();
-    }
-
-    /* ========== Gestione file & anteprima ========== */
-    async function handleFiles(files){
-      for (let f=0; f<files.length; f++){
-        const file=files[f]; 
-        const name=file.name||'file';
-        const ext=(name.split('.').pop()||'').toLowerCase();
-        const queueItem = addToQueue(file, 'processing');
-
-        try{
-          const isText=(ext==='txt'||ext==='md');
-          const isDocx=(ext==='docx');
-          const isPdf =(ext==='pdf');
-          const isAudio=(['mp3','m4a','wav','ogg'].includes(ext));
-          const isVideo=(['mp4','mov','mkv','webm'].includes(ext));
-
-          updateQueueItem(queueItem.id, { progress: 10 });
-
-          if (isText){
-            updateQueueItem(queueItem.id, { status: 'processing', progress: 30 });
-            const t=await file.text();
-            setPreviewHTML('<pre style="white-space:pre-wrap;">'+escapeHTML(t)+'</pre>');
-            appendToNotes('Testo locale: '+name, t);
-            updateQueueItem(queueItem.id, { status: 'success', progress: 100 });
-            incrementFileCount();
-            showToast(`File ${name} caricato con successo`, 'success');
-            continue;
-          }
-
-          if (isDocx){
-            updateQueueItem(queueItem.id, { status: 'processing', progress: 30 });
-            const ab=await file.arrayBuffer();
-            updateQueueItem(queueItem.id, { progress: 60 });
-            const res=await window.mammoth.convertToHtml({arrayBuffer:ab},{
-              styleMap:[
-                "p[style-name='Title'] => h1:fresh",
-                "p[style-name='Heading 1'] => h2:fresh",
-                "p[style-name='Heading 2'] => h3:fresh"
-              ]
-            });
-            const html=(res&&res.value)||"";
-            setPreviewHTML(html||'<p>(Documento vuoto)</p>');
-            const tmp=document.createElement('div'); 
-            tmp.innerHTML=html;
-            appendToNotes('Estratto (locale): '+name, (tmp.textContent||tmp.innerText||'').trim());
-            updateQueueItem(queueItem.id, { status: 'success', progress: 100 });
-            incrementFileCount();
-            showToast(`File ${name} convertito con successo`, 'success');
-            continue;
-          }
-
-          if (isPdf){
-            updateQueueItem(queueItem.id, { status: 'processing', progress: 20 });
-            const lib=window.pdfjsLib; 
-            if (!lib) throw new Error('PDF.js non inizializzato');
-            const ab=await file.arrayBuffer();
-            updateQueueItem(queueItem.id, { progress: 40 });
-            const pdf=await lib.getDocument({data:ab}).promise;
-            const page=await pdf.getPage(1);
-            const viewport=page.getViewport({scale:1.2});
-            const canvas=document.createElement('canvas'), ctx=canvas.getContext('2d');
-            canvas.height=viewport.height; 
-            canvas.width=viewport.width;
-            await page.render({canvasContext:ctx, viewport}).promise;
-            setPreviewHTML(''); 
-            previewEl.appendChild(canvas);
-
-            updateQueueItem(queueItem.id, { progress: 70 });
-            let text='';
-            try{
-              const dataURL=arrayBufferToDataURL(ab,'application/pdf');
-              const r=await fetch('/api/extract',{
-                method:'POST',
-                headers:{'Content-Type':'application/json'},
-                body:JSON.stringify({dataURL, fileName:name})
-              });
-              const j=await r.json().catch(()=>({})); 
-              if(!r.ok) throw new Error(j&&j.message||'Errore estrazione');
-              text=j&&j.text||'';
-            }catch(_){ }
-            
-            if (!text || !String(text).trim()){
-              text=await extractPdfTextLocal(ab,8);
-            }
-            
-            appendToNotes('Estratto: '+name, text||'(nessun testo)'); 
-            updateQueueItem(queueItem.id, { status: 'success', progress: 100 });
-            incrementFileCount();
-            showToast(`PDF ${name} elaborato con successo`, 'success');
-            continue;
-          }
-
-          if (isAudio){
-            updateQueueItem(queueItem.id, { progress: 30 });
-            const blobUrl = await uploadViaApi(file);
-            updateQueueItem(queueItem.id, { progress: 60 });
-            const text = await transcribeWithUrl(blobUrl);
-            appendToNotes('Trascrizione audio: '+name, text); 
-            updateQueueItem(queueItem.id, { status: 'success', progress: 100 });
-            incrementFileCount();
-            showToast(`Audio ${name} trascritto con successo`, 'success');
-            continue;
-          }
-
-          if (isVideo){
-            updateQueueItem(queueItem.id, { progress: 20 });
-            const url=URL.createObjectURL(file);
-            setPreviewHTML('');
-            const vid=document.createElement('video'); 
-            vid.controls=true; 
-            vid.src=url; 
-            vid.className="w-full max-h-80 rounded-lg"; 
-            previewEl.appendChild(vid);
-
-            updateQueueItem(queueItem.id, { progress: 50 });
-            const blobUrl = await uploadViaApi(file);
-            updateQueueItem(queueItem.id, { progress: 80 });
-            const text=await transcribeWithUrl(blobUrl);
-            appendToNotes('Trascrizione video: '+name, text); 
-            updateQueueItem(queueItem.id, { status: 'success', progress: 100 });
-            incrementFileCount();
-            showToast(`Video ${name} trascritto con successo`, 'success');
-            continue;
-          }
-
-          updateQueueItem(queueItem.id, { status: 'error', progress: 0 });
-          showToast(`Formato non supportato: ${name}`, 'error');
-        }catch(e){
-          console.error(e); 
-          updateQueueItem(queueItem.id, { status: 'error', progress: 0 });
-          showToast(`Errore elaborando ${name}: ${e.message}`, 'error');
-        }
-      }
-      $('#uploader').value='';
-    }
-
-    /* ========== Analisi intelligente client-side ========== */
-    function splitSentences(t){
-      t = cleanText(t);
-      return t.replace(/([\.!\?])\s+([A-ZÀ-Ú])/g, "$1|$2").split("|").map(s=>s.trim()).filter(Boolean);
-    }
-
-    function summarizeText(t, maxSentences){
-      maxSentences = maxSentences || 5;
-      const cues = ["decisione","decide","delibera","approva","stabilisce","si conviene","scadenza","entro","termine","deadline","consegna","responsabile","incarica","assegnato","owner","bilancio","budget","priorità","urgente","importante"];
-      const sents = splitSentences(t); 
-      if (!sents.length) return "";
-      const scores = sents.map((s,i)=>{
-        const lc=s.toLowerCase();
-        let cueScore=0; 
-        for (const c of cues) if (lc.includes(c)) cueScore++;
-        const pos=(i===0?1:0)+(i===sents.length-1?0.5:0);
-        const len=Math.min(s.length/120,1);
-        return {s,score:cueScore*2+pos+len*0.5};
-      }).sort((a,b)=>b.score-a.score);
-      return scores.slice(0,maxSentences).map(x=>x.s).join(" ");
-    }
-
-    function extractHighlights(t){
-      const txt=cleanText(t);
-      const decisions=[],deadlines=[],owners=[];
-      const lines=txt.split("\n").map(l=>l.trim()).filter(Boolean);
-      const reDate=/\b(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}|(?:\d{1,2}\s+(?:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-z]*\s+\d{4}))\b/gi;
-      for (const l of lines){
-        const ll=l.toLowerCase();
-        if (/(delibera|si decide|si stabilisce|si approva|viene approvato|si conviene)/i.test(ll)) decisions.push(l);
-        if (/(entro|scadenza|termine|deadline|entro e non oltre|per il|entro il)/i.test(ll)){
-          const m=l.match(reDate); 
-          const dm=m?m[0]:""; 
-          deadlines.push(dm?(l+" (data: "+dm+")"):l);
-        }
-        const m1=l.match(/responsabile\s*:\s*(.+)$/i);
-        const m2=l.match(/a cura di\s+(.+)$/i);
-        const m3=l.match(/si incarica\s+([A-ZÀ-Ú][A-Za-zÀ-ÿ''\- ]+)\s+di/i);
-        const m4=l.match(/assegnat[oa]\s+a\s+([A-ZÀ-Ú][A-Za-zÀ-ÿ''\- ]+)/i);
-        if (m1) owners.push(m1[1].trim()); 
-        else if (m2) owners.push(m2[1].trim());
-        else if (m3) owners.push(m3[1].trim()); 
-        else if (m4) owners.push(m4[1].trim());
-      }
-      const uniq=a=>Array.from(new Set(a));
-      return { 
-        decisions:uniq(decisions), 
-        deadlines:uniq(deadlines), 
-        owners:uniq(owners) 
-      };
-    }
-
-    function extractActions(t){
-      const lines=cleanText(t).split("\n").map(l=>l.trim()).filter(Boolean);
-      const verbs=/(inviare|invia|preparare|prepara|contattare|contatta|verificare|verifica|aggiornare|aggiorna|convocare|convoca|pagare|paga|richiedere|richiede|redigere|redigi|prenotare|prenota|organizzare|organizza|acquistare|acquista|fare|fai|eseguire|esegue)/i;
-      const reDate=/\b(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}|(?:\d{1,2}\s+(?:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-z]*\s+\d{4}))\b/gi;
-      const items=[];
-      for (const l of lines){
-        if (l[0]==="-" || l[0]==="•" || verbs.test(l)){
-          const m=l.match(reDate); 
-          const due=(m?m[0]:"")||(/(entro|deadline|scadenza|termine)/i.test(l)?"entro (data da definire)":"");
-          const mOwner=(l.match(/(?:da|a|per)\s+([A-ZÀ-Ú][A-Za-zÀ-ÿ''\- ]+)\b/)||[])[1] ||
-                        (l.match(/(?:responsabile|assegnat[oa])\s*:\s*([A-ZÀ-Ú][A-Za-zÀ-ÿ''\- ]+)/i)||[])[1] || "";
-          items.push({ 
-            task:l.replace(/^[\-\•]\s*/,""), 
-            owner:mOwner||null, 
-            due:due||null 
-          });
-        }
-      }
-      const seen=new Set(), out=[];
-      for (const it of items){
-        const k=(it.task+"|"+(it.owner||"")+"|"+(it.due||"")).toLowerCase();
-        if (!seen.has(k)){ 
-          seen.add(k); 
-          out.push(it); 
-        }
-      }
-      return out;
-    }
-
-    function renderList(el, arr, bullet){ 
-      el.textContent=(arr&&arr.length)?arr.map(x=>(bullet||"- ")+x).join("\n"):"—"; 
-    }
-    
-    function renderTodos(el, items){
-      if (!(items && items.length)){ 
-        el.textContent="—"; 
-        return; 
-      }
-      el.textContent = items.map(it=>{
-        const who=it.owner?(" ["+it.owner+"]"):""; 
-        const due=it.due?(" (scad.: "+it.due+")"):"";
-        return "□ "+it.task+who+due;
-      }).join("\n");
-    }
-
-    /* ========== Azioni sui pulsanti ========== */
-    async function runNotesAction(kind){
-      const ta = $('#notes'); 
-      const src = (ta.value || "").trim();
-      if (!src){ 
-        showToast("Incolla o scrivi del testo negli Appunti prima.", "warning"); 
-        return; 
-      }
-      let out = "";
-
-      if (kind === "cleanup"){
-        out = await callTextAPI(["/api/cleanup"], { notes: src }) || cleanText(src);
-        ta.value = out; 
-        $('#result').textContent = out;
-      } else if (kind === "minutes"){
-        out = await callTextAPI(["/api/minutes","/api/format","/api/verbale"], { notes: src }) || toMinutes(src);
-        $('#result').textContent = out;
-      } else if (kind === "transcript"){
-        out = await callTextAPI(["/api/cleanup"], { notes: src, mode: "transcript" }) || toTranscriptLocal(src);
-        ta.value = out; 
-        $('#result').textContent = out;
-      }
-      
-      scheduleAutoSave();
-    }
-
-    async function generateMinutes(){
-      const notes = ($('#notes').value||'').trim();
-      if (!notes){ 
-        showToast('Inserisci o carica degli appunti prima.', 'warning'); 
-        return; 
-      }
-      const r = await fetch('/api/format',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({notes})
-      });
-      const j = await r.json().catch(()=>({})); 
-      if(!r.ok) throw new Error((j&&j.message)||'Errore formattazione');
-      $('#result').textContent=(j&&j.verbale)||'(vuoto)';
-      scheduleAutoSave();
-    }
-
-    /* ========== Helpers per stato pulsanti ========== */
-    function withLoading(btn, fn){
-      btn.classList.add('is-loading','is-active'); 
-      btn.disabled=true;
-      return Promise.resolve().then(fn).catch(err=>{
-        showToast(err?.message||err, 'error');
-      }).finally(()=>{
-        btn.classList.remove('is-loading'); 
-        setTimeout(()=>btn.classList.remove('is-active'),300); 
-        btn.disabled=false;
-      });
-    }
-    
-    function flashActive(btn, fn){
-      btn.classList.add('is-active'); 
-      try{ fn(); } finally{ 
-        setTimeout(()=>btn.classList.remove('is-active'),250); 
-      }
-    }
-
-    /* ========== Fullscreen ========== */
-    function openFullscreen() {
-      const overlay = document.getElementById('fullscreenOverlay');
-      const content = document.getElementById('fullscreenContent');
-      const preview = document.getElementById('preview');
-      
-      content.innerHTML = preview.innerHTML;
-      overlay.classList.add('active');
-    }
-
-    function closeFullscreen() {
-      const overlay = document.getElementById('fullscreenOverlay');
-      overlay.classList.remove('active');
-    }
-
-    /* ========== Event Listeners ========== */
-    document.addEventListener('DOMContentLoaded', function() {
-      // Auto-load e statistiche
-      autoLoad();
-      updateStats();
-      updateQueueCounter();
-      updateCharCount();
-      
-      // Health check
-      health();
-
-      // Upload handlers
-      $('#btnUpload').addEventListener('click', ()=> $('#uploader').click());
-      $('#uploader').addEventListener('change', e=>{
-        const files = Array.from(e.target.files||[]); 
-        if (files.length) handleFiles(files);
-      });
-
-      // Preview handlers
-      $('#btnClearPreview').addEventListener('click', ()=> setPreviewHTML(''));
-      $('#btnFullscreen').addEventListener('click', openFullscreen);
-
-      // Queue handlers
-      $('#btnClearQueue').addEventListener('click', () => {
-        fileQueue = [];
-        $('#queue').innerHTML = '';
-        updateQueueCounter();
-        showToast('Coda pulita', 'info');
-      });
-
-      // Notes handlers
-      $('#notes').addEventListener('input', () => {
-        updateCharCount();
-        scheduleAutoSave();
-      });
-
-      // Action buttons
-      const btnClean=$('#btnClean'), btnMinutesAI=$('#btnMinutesAI'), btnTranscribe=$('#btnTranscribe'), btnGenerate=$('#btnGenerate'), btnReset=$('#btnReset');
-
-      btnClean?.addEventListener('click', ()=> withLoading(btnClean, ()=>runNotesAction('cleanup')));
-      btnMinutesAI?.addEventListener('click', ()=> withLoading(btnMinutesAI, ()=>runNotesAction('minutes')));
-      btnTranscribe?.addEventListener('click', ()=> withLoading(btnTranscribe,()=>runNotesAction('transcript')));
-      btnGenerate?.addEventListener('click', ()=> withLoading(btnGenerate, generateMinutes));
-      btnReset?.addEventListener('click', ()=> withLoading(btnReset, ()=>{
-        $('#notes').value=''; 
-        $('#result').textContent='Il verbale comparirà qui…';
-        setPreviewHTML(''); 
-        fileQueue = [];
-        $('#queue').innerHTML = '';
-        updateQueueCounter();
-        $('#summaryBox').textContent='—'; 
-        $('#highlightsBox').textContent='—'; 
-        $('#todoBox').textContent='—'; 
-        $('#tagsBox').textContent='—';
-        updateCharCount();
-        scheduleAutoSave();
-        showToast('Tutto resettato', 'info');
-      }));
-
-      // Analysis buttons
-      const bSum=$('#btnSummarize'), bHig=$('#btnHighlights'), bTodo=$('#btnTodos'), bTags=$('#btnSuggestTags');
-
-      bSum?.addEventListener('click', ()=> flashActive(bSum, ()=>{
-        const src = ($('#notes').value||'').trim(); 
-        if(!src){ 
-          showToast('Incolla o carica del testo negli Appunti.', 'warning'); 
-          return; 
-        }
-        const out = summarizeText(src,5); 
-        $('#summaryBox').textContent = out || '—';
-        scheduleAutoSave();
-      }));
-      
-      bHig?.addEventListener('click', ()=> flashActive(bHig, ()=>{
-        const src = ($('#notes').value||'').trim(); 
-        if(!src){ 
-          showToast('Incolla o carica del testo negli Appunti.', 'warning'); 
-          return; 
-        }
-        const h = extractHighlights(src); 
-        let txt="";
-        if (h.decisions?.length) txt += "Decisioni:\n- " + h.decisions.join("\n- ") + "\n\n";
-        if (h.deadlines?.length) txt += "Scadenze:\n- " + h.deadlines.join("\n- ") + "\n\n";
-        if (h.owners?.length)    txt += "Responsabili:\n- " + h.owners.join("\n- ");
-        $('#highlightsBox').textContent = txt.trim() || "—";
-        scheduleAutoSave();
-      }));
-      
-      bTodo?.addEventListener('click', ()=> flashActive(bTodo, ()=>{
-        const src = ($('#notes').value||'').trim(); 
-        if(!src){ 
-          showToast('Incolla o carica del testo negli Appunti.', 'warning'); 
-          return; 
-        }
-        const items = extractActions(src); 
-        renderTodos($('#todoBox'), items);
-        scheduleAutoSave();
-      }));
-      
-      bTags?.addEventListener('click', ()=> flashActive(bTags, ()=>{
-        const src = ($('#notes').value||'').trim(); 
-        if(!src){ 
-          showToast('Incolla o carica del testo negli Appunti.', 'warning'); 
-          return; 
-        }
-        const tags = (function(lc){
-          const TAGS={
-            Bilancio:["bilancio","consuntivo","preventivo","spese","budget","quote","riparto"],
-            Lavori:["lavori","manutenzione","appalto","impresa","cantiere","capitolato"],
-            Convocazione:["convocazione","ordine del giorno","odg","assemblea","verbale"],
-            Fornitori:["fornitore","fornitori","preventivo","offerta","contratto","fattura"],
-            Sicurezza:["sicurezza","incendio","impianto","adeguamento","certificazione"],
-            Pagamenti:["pagare","pagamento","mav","bonifico","morosità","sollecito"]
-          };
-          const out=[]; 
-          for (const tag in TAGS){ 
-            for (const k of TAGS[tag]) {
-              if (lc.includes(k)){ 
-                out.push(tag); 
-                break; 
-              }
-            }
-          }
-          return out.length?out:["Generale"];
-        })(((( '#notes' && $('#notes').value) || '')+"").toLowerCase());
-        renderList($('#tagsBox'), tags, "# ");
-        scheduleAutoSave();
-      }));
-
-      // Export buttons
-      $('#btnCopy')?.addEventListener('click', async ()=>{
-        const t=$('#result').textContent; 
-        if (!t || t.indexOf('Il verbale')===0) return;
-        try{ 
-          await navigator.clipboard.writeText(t); 
-          showToast('Copiato negli appunti!', 'success'); 
-        } catch(_){ 
-          showToast('Impossibile copiare', 'error'); 
-        }
-      });
-      
-      $('#btnDownload')?.addEventListener('click', ()=>{
-        const t=$('#result').textContent; 
-        if (!t || t.indexOf('Il verbale')===0) return;
-        const blob=new Blob([t],{type:'text/markdown;charset=utf-8'});
-        const a=document.createElement('a'); 
-        a.href=URL.createObjectURL(blob);
-        a.download='verbale_'+new Date().toISOString().split('T')[0]+'.md'; 
-        document.body.appendChild(a); 
-        a.click(); 
-        a.remove(); 
-        URL.revokeObjectURL(a.href);
-        showToast('File Markdown scaricato', 'success');
-      });
-
-      $('#btnExportPDF')?.addEventListener('click', ()=>{
-        const t=$('#result').textContent; 
-        if (!t || t.indexOf('Il verbale')===0) {
-          showToast('Nessun verbale da esportare', 'warning');
-          return;
-        }
-        
-        // Crea un semplice HTML per il PDF
-        const htmlContent = `
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="utf-8">
-            <title>Verbale</title>
-            <style>
-              body { font-family: Arial, sans-serif; line-height: 1.6; margin: 40px; }
-              h1, h2, h3 { color: #333; }
-              pre { white-space: pre-wrap; }
-            </style>
-          </head>
-          <body>
-            <pre>${escapeHTML(t)}</pre>
-          </body>
-          </html>
-        `;
-        
-        const blob = new Blob([htmlContent], {type:'text/html;charset=utf-8'});
-        const a = document.createElement('a'); 
-        a.href = URL.createObjectURL(blob);
-        a.download = 'verbale_'+new Date().toISOString().split('T')[0]+'.html'; 
-        document.body.appendChild(a); 
-        a.click(); 
-        a.remove(); 
-        URL.revokeObjectURL(a.href);
-        showToast('File HTML scaricato (apri e stampa come PDF)', 'info');
-      });
     });
 
-    /* ========== Drag & Drop + Paste ========== */
-    (()=>{
-      const dropArea = document.getElementById('dropArea');
-      const uploader = document.getElementById('uploader');
-      if (!dropArea || !uploader) return;
+    document.getElementById('clearPreviewBtn').addEventListener('click', () => {
+      document.getElementById('previewBox').textContent = "L'anteprima comparirà qui...";
+    });
 
-      // stile evidenziato
-      dropArea.classList.add('dropzone');
+    document.getElementById('fullScreenBtn').addEventListener('click', () => {
+      // Possibile apertura a schermo intero o altro comportamento
+      alert("Funzione schermata intera non ancora implementata");
+    });
 
-      // evidenziazione
-      ['dragenter','dragover'].forEach(ev =>
-        dropArea.addEventListener(ev, e => { 
-          e.preventDefault(); 
-          dropArea.classList.add('is-dragover'); 
-        })
-      );
-      ['dragleave','drop'].forEach(ev =>
-        dropArea.addEventListener(ev, e => { 
-          e.preventDefault(); 
-          dropArea.classList.remove('is-dragover'); 
-        })
-      );
+    document.getElementById('clearNotesBtn').addEventListener('click', () => {
+      document.getElementById('notesArea').value = "";
+    });
 
-      // drop -> usa handleFiles(files)
-      dropArea.addEventListener('drop', e => {
-        const files = [...(e.dataTransfer?.files||[])];
-        if (files.length) handleFiles(files);
-      });
-
-      // incolla: file dal clipboard oppure testo in Appunti
-      document.addEventListener('paste', e => {
-        const items = [...(e.clipboardData?.items||[])];
-        const fileItem = items.find(i => i.kind === 'file');
-        if (fileItem) {
-          const f = fileItem.getAsFile();
-          if (f) {
-            handleFiles([f]);
-            showToast('File incollato dal clipboard', 'info');
-          }
-          return;
-        }
-        const text = e.clipboardData?.getData('text/plain');
-        if (text && !document.activeElement.matches('textarea,input')) {
-          const ta = document.getElementById('notes');
-          ta.value = (ta.value ? ta.value + '\n' : '') + text;
-          ta.dispatchEvent(new Event('input'));
-          showToast('Testo incollato negli appunti', 'info');
-        }
-      });
-
-      // Escape key per chiudere fullscreen
-      document.addEventListener('keydown', e => {
-        if (e.key === 'Escape') {
-          const overlay = document.getElementById('fullscreenOverlay');
-          if (overlay.classList.contains('active')) {
-            closeFullscreen();
-          }
-        }
-      });
-    })();
-
-    // Funzione globale per rimuovere dalla coda (usata negli onclick)
-    window.removeFromQueue = removeFromQueue;
-    
-    // Funzione globale per fullscreen
-    window.openFullscreen = openFullscreen;
-    window.closeFullscreen = closeFullscreen;
+    // Altri bottoni e funzionalità possono essere implementati analogamente
   </script>
 </body>
 </html>
