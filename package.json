@@ -16,9 +16,11 @@
     "pdf-parse": "^1.1.1",
     "tesseract.js": "^4.0.2",
     "sanitize-filename": "^1.6.3",
-    "debug": "^4.3.4"
+    "debug": "^4.3.4",
+    "axios": "^1.4.0"
   },
   "engines": {
     "node": "20.x || 22.x"
   }
 }
+
