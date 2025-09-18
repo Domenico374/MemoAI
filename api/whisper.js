@@ -1,24 +1,14 @@
-import { Readable } from 'stream';
-import { Configuration, OpenAIApi } from 'openai';
+import OpenAI from "openai";
 
-const configuration = new Configuration({
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-const openai = new OpenAIApi(configuration);
 
 export const config = {
   api: {
-    bodyParser: false, // perché riceviamo file binari (multipart/form-data)
+    bodyParser: false, // Necessario per leggere raw stream file
   },
 };
-
-function bufferToStream(buffer) {
-  const readable = new Readable();
-  readable._read = () => {}; // _read is required but you can noop it
-  readable.push(buffer);
-  readable.push(null);
-  return readable;
-}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -27,27 +17,23 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Lettura del body come buffer (esempio minimal, per ambienti senza multipart parser)
+    // Ricevi il file audio come buffer dal body della richiesta
     const chunks = [];
     for await (const chunk of req) {
       chunks.push(chunk);
     }
     const buffer = Buffer.concat(chunks);
 
-    // Qui potrebbe servire parsing multipart per estrarre il file se inviato in multipart/form-data.
-    // Qui assumiamo che il buffer sia il file audio completo.
+    // Invia il buffer alla API di trascrizione Whisper
+    // La funzione .audio.transcriptions.create usa il buffer raw e il modello whisper-1
+    const response = await openai.audio.transcriptions.create({
+      file: buffer,
+      model: "whisper-1",
+      response_format: "json",
+      language: "en"
+    });
 
-    // Invia il file audio a OpenAI Whisper API per trascrizione
-    const response = await openai.createTranscription(
-      bufferToStream(buffer),
-      "whisper-1",
-      undefined,
-      "json",
-      0,
-      "en"
-    );
-
-    res.status(200).json({ text: response.data.text });
+    res.status(200).json({ text: response.text });
   } catch (error) {
     console.error("Errore nel handler whisper:", error);
     res.status(500).json({ error: 'Internal server error', details: error.message });
