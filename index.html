@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Memo AI</title>
 <style>
+  /* stile precedentemente fornito */
   body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background: #f9fafb;
@@ -22,8 +23,6 @@
   h1 { font-size: 1.8rem; color: #1571e8; margin-bottom: 0.5rem; }
   h2 { font-weight: 600; color: #121317; margin: 10px 0 8px; }
   .section { margin-bottom: 24px; }
-
-  /* Pulsanti */
   button {
     font-weight: 600;
     border-radius: 10px;
@@ -51,7 +50,6 @@
     background: #f3f4f6;
     color: #374151;
   }
-
   input[type="file"] {
     font-size: 14px;
     padding: 6px 10px;
@@ -100,200 +98,3 @@
     line-height: 1.4;
     min-height: 80px;
   }
-  #info-bar {
-    margin-bottom: 20px;
-    font-size: 0.85rem;
-    color: #2489f3;
-  }
-
-  /* Loader animato */
-  .loader {
-    border: 4px solid #f3f3f3;
-    border-top: 4px solid #439eff;
-    border-radius: 50%;
-    width: 22px;
-    height: 22px;
-    animation: spin 1s linear infinite;
-    display: inline-block;
-    vertical-align: middle;
-    margin-left: 10px;
-  }
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-
-  /* Drag & drop area */
-  #drop-area {
-    border: 2px dashed #71C7E3;
-    border-radius: 12px;
-    padding: 24px;
-    text-align: center;
-    color: #5f6368;
-    font-size: 1rem;
-    margin-bottom: 24px;
-    transition: background-color 0.3s ease;
-  }
-  #drop-area.dragover {
-    background-color: #e9f3fe;
-  }
-</style>
-</head>
-<body>
-  <div id="app">
-    <h1>Memo AI</h1>
-    <div id="info-bar" aria-live="polite">File elaborati: 0 | Ultima attività: -</div>
-
-    <div id="drop-area" aria-label="Trascina qui il file o usa il seleziona file">
-      <p>Trascina il file audio qui o usa il pulsante qui sotto</p>
-      <input type="file" id="fileInput" aria-describedby="fileHelp" />
-    </div>
-
-    <button id="uploadBtn" class="btn-primary" disabled>Carica e Trascrivi</button><span id="loadingIndicator" style="display:none;" class="loader"></span>
-
-    <p id="fileHelp" style="font-size:0.85rem; color:#666; margin-top: 8px;">
-      Suggerimento: per file > 4.5 MB usare versioni ridotte. I PDF richiederanno OCR.
-    </p>
-
-    <div class="section" aria-label="Anteprima">
-      <h2>Anteprima</h2>
-      <audio id="audioPreview" controls style="width: 100%; border-radius: 12px; margin-bottom: 12px; display:none;"></audio>
-      <div id="previewBox" style="min-height:60px; padding: 8px; border: 1px solid #ddd; border-radius: 8px; background:#fdfdfd; overflow-wrap: break-word; font-size: 0.9rem;">
-        L'anteprima comparirà qui...
-      </div>
-      <button id="fullScreenBtn" class="btn-secondary" style="margin-top:10px;">Schermo intero</button>
-      <button id="clearPreviewBtn" class="btn-secondary" style="margin-top:10px; margin-left:10px;">Pulisci anteprima</button>
-    </div>
-
-    <div class="section" aria-label="Appunti">
-      <h2>Appunti</h2>
-      <textarea id="notesArea" placeholder="Appunti trascritti o estratti..."></textarea>
-      <div style="margin-top: 12px;">
-        <button class="btn-secondary" id="clearNotesBtn">Pulizia</button>
-        <button class="btn-primary" id="verbaleBtn">Verbale</button>
-        <button class="btn-primary" id="transcribeBtn" style="background:#4ade80; margin-left:10px;">Trascrizione</button>
-        <button class="btn-primary" id="generateVerbaleBtn" style="background:#3b82f6; margin-left:10px;">Genera verbale</button>
-        <button class="btn-primary" id="resetBtn" style="background:#ef4444; margin-left:10px;">Resettare</button>
-      </div>
-    </div>
-
-    <div class="section" aria-label="Analisi intelligente">
-      <h2>Analisi intelligente</h2>
-      <div class="grid-2x2">
-        <div class="card">
-          <h3>Riassunto</h3><p>---</p>
-        </div>
-        <div class="card">
-          <h3>Punti salienti</h3><p>---</p>
-        </div>
-        <div class="card">
-          <h3>To-Do</h3><p>---</p>
-        </div>
-        <div class="card">
-          <h3>Tag suggeriti</h3><p>---</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="section" aria-label="Verbale">
-      <h2>Verbale</h2>
-      <div id="verbale-box">Il verbale comparirà qui...</div>
-      <button class="btn-secondary" style="margin-top: 10px; margin-right: 10px;">Copiare</button>
-      <button class="btn-secondary" style="margin-top: 10px; margin-right: 10px;">Scarica .md</button>
-      <button class="btn-secondary" style="margin-top: 10px;">PDF</button>
-    </div>
-  </div>
-
-  <script>
-    const fileInput = document.getElementById('fileInput');
-    const uploadBtn = document.getElementById('uploadBtn');
-    const loadingIndicator = document.getElementById('loadingIndicator');
-    const previewBox = document.getElementById('previewBox');
-    const audioPreview = document.getElementById('audioPreview');
-    const notesArea = document.getElementById('notesArea');
-
-    // Abilita il pulsante solo quando un file è selezionato
-    fileInput.addEventListener('change', () => {
-      uploadBtn.disabled = !fileInput.files.length;
-      if (fileInput.files.length) {
-        // Prepara player audio per anteprima
-        audioPreview.src = URL.createObjectURL(fileInput.files[0]);
-        audioPreview.style.display = 'block';
-      } else {
-        audioPreview.style.display = 'none';
-      }
-    });
-
-    // Gestione drag and drop
-    const dropArea = document.getElementById('drop-area');
-    dropArea.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      dropArea.classList.add('dragover');
-    });
-    dropArea.addEventListener('dragleave', () => {
-      dropArea.classList.remove('dragover');
-    });
-    dropArea.addEventListener('drop', (e) => {
-      e.preventDefault();
-      dropArea.classList.remove('dragover');
-      if (e.dataTransfer.files.length) {
-        fileInput.files = e.dataTransfer.files;
-        uploadBtn.disabled = false;
-        audioPreview.src = URL.createObjectURL(e.dataTransfer.files[0]);
-        audioPreview.style.display = 'block';
-      }
-    });
-
-    uploadBtn.addEventListener('click', async () => {
-      if (!fileInput.files.length) {
-        alert('Seleziona un file prima di caricare');
-        return;
-      }
-      uploadBtn.disabled = true;
-      loadingIndicator.style.display = 'inline-block';
-
-      const file = fileInput.files[0];
-      const formData = new FormData();
-      formData.append('file', file);
-
-      try {
-        const response = await fetch('/api/whisper', {
-          method: 'POST',
-          body: formData,
-        });
-        if (!response.ok) {
-          throw new Error('Errore server: ' + response.statusText);
-        }
-        const data = await response.json();
-        previewBox.textContent = `Trascrizione:\n${data.text}`;
-        notesArea.value = data.text;
-      } catch (error) {
-        alert('Errore durante upload: ' + error.message);
-        console.error(error);
-      } finally {
-        uploadBtn.disabled = false;
-        loadingIndicator.style.display = 'none';
-      }
-    });
-
-    document.getElementById('clearPreviewBtn').addEventListener('click', () => {
-      previewBox.textContent = "L'anteprima comparirà qui...";
-      audioPreview.src = "";
-      audioPreview.style.display = 'none';
-      fileInput.value = '';
-      uploadBtn.disabled = true;
-    });
-
-    document.getElementById('fullScreenBtn').addEventListener('click', () => {
-      alert("Funzione schermata intera non implementata");
-    });
-
-    document.getElementById('clearNotesBtn').addEventListener('click', () => {
-      notesArea.value = "";
-    });
-
-    // Puoi aggiungere qui ulteriori listener per gli altri bottoni (Verbale, Genera verbale, ecc.)
-  </script>
-
-</body>
-</html>
