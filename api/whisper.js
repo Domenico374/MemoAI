@@ -61,9 +61,23 @@ export default async function handler(req, res) {
       audioSource: audioSource.substring(0, 100) + '...' // Log solo i primi 100 caratteri per sicurezza
     });
 
+    // Scarica il file dall'URL del blob
+    logger.logRequest(req, "Downloading audio file from blob URL");
+    const response = await fetch(audioSource);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch audio file: ${response.status}`);
+    }
+    
+    const audioBuffer = await response.arrayBuffer();
+    const audioFile = new File([audioBuffer], 'audio.mp3', { type: 'audio/mpeg' });
+
+    logger.logRequest(req, "Downloaded audio file, starting transcription", {
+      fileSize: audioBuffer.byteLength
+    });
+
     // Chiamata a OpenAI Whisper
     const transcription = await client.audio.transcriptions.create({
-      file: audioSource, // OpenAI può accettare URL pubblici
+      file: audioFile,
       model: "whisper-1",
       language: "it", // Italiano
       response_format: "text"
