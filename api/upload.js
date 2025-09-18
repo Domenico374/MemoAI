@@ -1,7 +1,7 @@
 import { put } from '@vercel/blob';
 import Busboy from 'busboy';
 import axios from 'axios';
-import { transcribeAudio } from './transcribe-audio.js'; // Importa la funzione aggiornata di trascrizione
+import { transcribeAudio } from './transcribe-audio.js';
 
 export const config = { api: { bodyParser: false } };
 
@@ -16,13 +16,19 @@ function safeName(name) {
 }
 
 async function uploadStream(stream, filename, contentType) {
-  // Ho rimosso il token perché Vercel lo gestisce automaticamente.
-  const result = await put(filename, stream, {
-    access: 'public',
-    contentType: contentType || 'application/octet-stream',
-    addRandomSuffix: true,
-  });
-  return result;
+  try {
+    console.log(`Uploading stream for file: ${filename} with contentType: ${contentType}`);
+    const result = await put(filename, stream, {
+      access: 'public',
+      contentType: contentType || 'application/octet-stream',
+      addRandomSuffix: true,
+    });
+    console.log('Upload su blob avvenuto:', result);
+    return result;
+  } catch (e) {
+    console.error('Errore durante uploadStream:', e);
+    throw e;
+  }
 }
 
 export default async function handler(req, res) {
@@ -45,7 +51,7 @@ export default async function handler(req, res) {
     });
 
     bb.on('file', async (fieldname, file, info) => {
-      console.log(`File [${fieldname}]: filename: ${info.filename}, mimetype: ${info.mimeType}`);
+      console.log(`File received: filename=${info.filename}, mimetype=${info.mimeType}`);
 
       const filename = safeName(info.filename);
       const isMedia = info.mimeType.startsWith('audio/') || info.mimeType.startsWith('video/');
@@ -59,13 +65,12 @@ export default async function handler(req, res) {
         };
 
         if (isMedia) {
-          console.log(`File di tipo media (${info.mimeType}) caricato su Blob. Avvio la trascrizione...`);
+          console.log(`Inizio trascrizione per file media (${info.mimeType}) su URL: ${fileInfo.url}`);
 
           transcribeAudio(fileInfo.url)
             .then(transcribedText => {
               console.log("Trascrizione completata per URL:", fileInfo.url);
               console.log("Testo trascritto:", transcribedText);
-              // Qui puoi salvare il testo in un database o inviare una notifica al client
             })
             .catch(error => {
               console.error("Errore durante la trascrizione:", error);
@@ -78,9 +83,7 @@ export default async function handler(req, res) {
           });
 
         } else {
-          console.log("File di tipo documento caricato su Blob. Avvio l'estrazione...");
-
-          // Qui puoi chiamare la logica di estrazione documenti
+          console.log("File di tipo documento caricato su Blob. Elaborazione documenti...");
 
           res.status(200).json({
             success: true,
@@ -90,7 +93,7 @@ export default async function handler(req, res) {
         }
 
       } catch (uploadError) {
-        console.error('Errore durante l\'upload o il processing:', uploadError);
+        console.error('Errore durante upload o processing:', uploadError);
         res.status(500).json({ success: false, error: 'Upload failed', details: uploadError.message });
       }
     });
