@@ -1,8 +1,7 @@
-// Aggiungi gli import necessari
 import { put } from '@vercel/blob';
 import Busboy from 'busboy';
 import axios from 'axios';
-import { transcribeAudio } from './transcribe-audio.js'; // Importa la funzione di trascrizione
+import { transcribeAudio } from './transcribe-audio.js'; // Importa la funzione aggiornata di trascrizione
 
 export const config = { api: { bodyParser: false } };
 
@@ -33,27 +32,24 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     if (req.method === 'OPTIONS') return res.status(200).end();
+
     if (req.method !== 'POST') {
       return res.status(405).json({ success: false, error: 'Method not allowed' });
     }
 
     const bb = Busboy({ headers: req.headers });
-    let fileInfo = {}; // Per salvare i metadati del file
+    let fileInfo = {};
 
-    // Evento per la gestione dei campi (se presenti)
     bb.on('field', (fieldname, fieldValue, info) => {
       console.log(`Field [${fieldname}]: value: ${fieldValue}`);
-      // Puoi gestire qui campi come 'userId', 'fileType' ecc.
     });
 
-    // Evento per la gestione del file
     bb.on('file', async (fieldname, file, info) => {
       console.log(`File [${fieldname}]: filename: ${info.filename}, mimetype: ${info.mimeType}`);
-      
+
       const filename = safeName(info.filename);
       const isMedia = info.mimeType.startsWith('audio/') || info.mimeType.startsWith('video/');
 
-      // Carica il file su Vercel Blob
       try {
         const result = await uploadStream(file, filename, info.mimeType);
         fileInfo = {
@@ -62,36 +58,30 @@ export default async function handler(req, res) {
           contentType: info.mimeType
         };
 
-        // Se il file è audio o video, avvia la trascrizione
         if (isMedia) {
           console.log(`File di tipo media (${info.mimeType}) caricato su Blob. Avvio la trascrizione...`);
-          
-          // Chiama la tua funzione di trascrizione
-          // La trascrizione è un'operazione asincrona, quindi non aspettiamo il risultato qui.
-          // Invece, restituiamo un ID al client per il polling.
+
           transcribeAudio(fileInfo.url)
             .then(transcribedText => {
-              // Qui potresti salvare il testo in un database associandolo all'URL del blob.
               console.log("Trascrizione completata per URL:", fileInfo.url);
-              // In un sistema reale, dovresti notificare il client (es. tramite WebSocket)
+              console.log("Testo trascritto:", transcribedText);
+              // Qui puoi salvare il testo in un database o inviare una notifica al client
             })
             .catch(error => {
               console.error("Errore durante la trascrizione:", error);
             });
-          
-          // Restituisci una risposta "in attesa" al client
+
           res.status(202).json({
             success: true,
             message: 'File caricato con successo. Trascrizione in corso...',
             data: fileInfo
           });
-          
+
         } else {
-          // Per file di testo (docx, pdf, ecc.)
           console.log("File di tipo documento caricato su Blob. Avvio l'estrazione...");
-          // Qui puoi chiamare la tua logica di estrazione per i documenti
-          // esempio: const text = await extractTextFromDocument(fileInfo.url);
-          
+
+          // Qui puoi chiamare la logica di estrazione documenti
+
           res.status(200).json({
             success: true,
             message: 'File caricato e processato con successo.',
