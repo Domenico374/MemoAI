@@ -106,6 +106,10 @@
     @keyframes spin{ to{ transform:translateY(-50%) rotate(360deg) } }
 
     .pill{ font:600 12px/1 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; }
+
+    /* ===== Drag & Drop highlight ===== */
+    .dropzone{border:2px dashed #0ea5e9;border-radius:12px;transition:background .2s,border-color .2s}
+    .dropzone.is-dragover{background:rgba(14,165,233,.08);border-color:#38bdf8}
   </style>
 </head>
 
@@ -134,7 +138,7 @@
     </header>
 
     <!-- Upload -->
-    <section class="bg-white rounded-2xl shadow p-5 mb-6">
+    <section class="bg-white rounded-2xl shadow p-5 mb-6" id="dropArea">
       <div class="flex items-start justify-between gap-3">
         <div>
           <h2 class="text-lg font-semibold">Carica file</h2>
@@ -357,7 +361,7 @@
             const out = (j && (j.text || j.verbale || j.content || j.result)) || "";
             if (out && typeof out === "string") return out;
           }
-        }catch(_){}
+        }catch(_){ }
       }
       return "";
     }
@@ -512,7 +516,7 @@
               const r=await fetch('/api/extract',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dataURL, fileName:name})});
               const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j&&j.message||'Errore estrazione');
               text=j&&j.text||'';
-            }catch(_){}
+            }catch(_){ }
             if (!text || !String(text).trim()){
               setRowStatus(li,'estrazione locale…');
               text=await extractPdfTextLocal(ab,8);
@@ -614,7 +618,7 @@
         const TAGS={Bilancio:["bilancio","consuntivo","preventivo","spese","budget","quote","riparto"],Lavori:["lavori","manutenzione","appalto","impresa","cantiere","capitolato"],Convocazione:["convocazione","ordine del giorno","odg","assemblea","verbale"],Fornitori:["fornitore","fornitori","preventivo","offerta","contratto","fattura"],Sicurezza:["sicurezza","incendio","impianto","adeguamento","certificazione"],Pagamenti:["pagare","pagamento","mav","bonifico","morosità","sollecito"]};
         const out=[]; for (const tag in TAGS){ for (const k of TAGS[tag]) if (lc.includes(k)){ out.push(tag); break; } }
         return out.length?out:["Generale"];
-      })((($('#notes').value||'')+"").toLowerCase());
+      })(((( '#notes' && $('#notes').value) || '')+"").toLowerCase());
       renderList($('#tagsBox'), tags, "# ");
     }));
 
@@ -631,6 +635,49 @@
 
     /* Avvio */
     health();
+  </script>
+
+  <!-- Drag & Drop + Paste (usa le funzioni esistenti) -->
+  <script>
+    (()=>{
+      const dropArea = document.getElementById('dropArea');
+      const uploader = document.getElementById('uploader');
+      if (!dropArea || !uploader) return;
+
+      // stile evidenziato
+      dropArea.classList.add('dropzone');
+
+      // evidenziazione
+      ['dragenter','dragover'].forEach(ev =>
+        dropArea.addEventListener(ev, e => { e.preventDefault(); dropArea.classList.add('is-dragover'); })
+      );
+      ['dragleave','drop'].forEach(ev =>
+        dropArea.addEventListener(ev, e => { e.preventDefault(); dropArea.classList.remove('is-dragover'); })
+      );
+
+      // drop -> usa handleFiles(files)
+      dropArea.addEventListener('drop', e => {
+        const files = [...(e.dataTransfer?.files||[])];
+        if (files.length) handleFiles(files);
+      });
+
+      // incolla: file dal clipboard oppure testo in Appunti
+      document.addEventListener('paste', e => {
+        const items = [...(e.clipboardData?.items||[])];
+        const fileItem = items.find(i => i.kind === 'file');
+        if (fileItem) {
+          const f = fileItem.getAsFile();
+          if (f) handleFiles([f]);
+          return;
+        }
+        const text = e.clipboardData?.getData('text/plain');
+        if (text && !document.activeElement.matches('textarea,input')) {
+          const ta = document.getElementById('notes');
+          ta.value = (ta.value ? ta.value + '\n' : '') + text;
+          ta.dispatchEvent(new Event('input'));
+        }
+      });
+    })();
   </script>
 </body>
 </html>
