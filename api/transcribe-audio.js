@@ -7,26 +7,23 @@ const ASSEMBLYAI_UPLOAD_URL = "https://api.assemblyai.com/v2/upload";
 const ASSEMBLYAI_TRANSCRIPT_URL = "https://api.assemblyai.com/v2/transcript";
 
 /**
- * Funzione per caricare un file audio su AssemblyAI.
- * @param {string} filePath - Il percorso del file audio da caricare.
+ * Funzione per caricare un buffer audio su AssemblyAI.
+ * @param {Buffer} fileBuffer - Il buffer del file audio da caricare.
  * @returns {Promise<string>} L'URL del file caricato.
  */
-async function uploadFileToAssemblyAI(filePath) {
-    console.log("Caricamento del file su AssemblyAI...");
-    const fileBuffer = fs.readFileSync(filePath);
-
+async function uploadFileBufferToAssemblyAI(fileBuffer) {
+    console.log("Caricamento del buffer su AssemblyAI...");
     const headers = {
         'authorization': ASSEMBLYAI_API_KEY,
         'content-type': 'application/octet-stream',
     };
-
     try {
         const uploadRes = await axios.post(ASSEMBLYAI_UPLOAD_URL, fileBuffer, { headers });
-        console.log("File caricato con successo!");
+        console.log("Buffer caricato con successo!");
         return uploadRes.data.upload_url;
     } catch (error) {
-        console.error("Errore durante il caricamento del file:", error.response?.data || error.message);
-        throw new Error("Errore nel caricamento del file su AssemblyAI.");
+        console.error("Errore durante il caricamento del buffer:", error.response?.data || error.message);
+        throw new Error("Errore nel caricamento del buffer su AssemblyAI.");
     }
 }
 
@@ -45,7 +42,6 @@ async function startTranscription(audioUrl) {
         audio_url: audioUrl,
         // Puoi aggiungere altre opzioni qui, come 'language_code'
     };
-
     try {
         const transcriptRes = await axios.post(ASSEMBLYAI_TRANSCRIPT_URL, body, { headers });
         console.log("Trascrizione avviata con ID:", transcriptRes.data.id);
@@ -66,13 +62,11 @@ async function pollForTranscriptionStatus(transcriptId) {
     const headers = {
         'authorization': ASSEMBLYAI_API_KEY,
     };
-
     while (true) {
         console.log("Controllo stato trascrizione...");
         try {
             const pollRes = await axios.get(pollUrl, { headers });
             const status = pollRes.data.status;
-
             if (status === 'completed') {
                 console.log("Trascrizione completata!");
                 return pollRes.data;
@@ -80,7 +74,6 @@ async function pollForTranscriptionStatus(transcriptId) {
                 console.error("Errore di trascrizione dall'API:", pollRes.data.error);
                 throw new Error("Trascrizione fallita con errore.");
             } else {
-                // Ancora in coda o in elaborazione, attendi e riprova.
                 await new Promise(resolve => setTimeout(resolve, 5000)); // Attende 5 secondi
             }
         } catch (error) {
@@ -91,25 +84,28 @@ async function pollForTranscriptionStatus(transcriptId) {
 }
 
 /**
- * Funzione principale che gestisce l'intero processo di trascrizione.
- * @param {string} filePath - Il percorso del file audio da trascrivere.
+ * Funzione principale aggiornata che gestisce l'intero processo di trascrizione da URL.
+ * @param {string} fileUrl - L'URL pubblico del file audio da trascrivere.
  * @returns {Promise<string>} Il testo trascritto.
  */
-export async function transcribeAudio(filePath) {
-    if (!filePath || !fs.existsSync(filePath)) {
-        throw new Error("Percorso del file non valido o inesistente.");
+export async function transcribeAudio(fileUrl) {
+    if (!fileUrl) {
+        throw new Error("URL del file non valido o mancante.");
     }
-
     try {
-        // Passo 1: Carica il file
-        const audioUrl = await uploadFileToAssemblyAI(filePath);
-
-        // Passo 2: Avvia la trascrizione
+        // Scarica i dati binari dal URL in un buffer
+        const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
+        const fileBuffer = Buffer.from(response.data, 'binary');
+        
+        // Carica il buffer su AssemblyAI
+        const audioUrl = await uploadFileBufferToAssemblyAI(fileBuffer);
+        
+        // Avvia la trascrizione
         const transcriptId = await startTranscription(audioUrl);
-
-        // Passo 3: Polling per lo stato
+        
+        // Polling per lo stato
         const transcriptionResult = await pollForTranscriptionStatus(transcriptId);
-
+        
         // Restituisce il testo finale
         return transcriptionResult.text;
     } catch (error) {
@@ -117,5 +113,3 @@ export async function transcribeAudio(filePath) {
         throw error;
     }
 }
-
-// Nota: Il tuo 'upload.js' dovrà ora chiamare 'transcribeAudio(filePath)'
