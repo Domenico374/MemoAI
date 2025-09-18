@@ -33,12 +33,15 @@ export default async function handler(req, res) {
   try {
     const { url, file } = req.body || {};
     
+    console.log('[WHISPER DEBUG] Request body:', { hasUrl: !!url, hasFile: !!file, urlLength: url?.length });
+    
     logger.logRequest(req, "Transcription request started", {
       hasUrl: !!url,
       hasFile: !!file
     });
 
     if (!url && !file) {
+      console.log('[WHISPER DEBUG] Missing url or file parameter');
       logger.logRequest(req, "Request rejected: missing url or file");
       return res.status(400).json({ 
         ok: false, 
@@ -47,6 +50,7 @@ export default async function handler(req, res) {
     }
 
     if (!process.env.OPENAI_API_KEY) {
+      console.log('[WHISPER DEBUG] Missing OpenAI API key');
       logger.error("OpenAI API key missing", null, { endpoint: req.url });
       return res.status(500).json({ 
         ok: false, 
@@ -56,32 +60,45 @@ export default async function handler(req, res) {
 
     // Usa l'URL se fornito, altrimenti fallback al file
     const audioSource = url || file;
+    console.log('[WHISPER DEBUG] Audio source:', audioSource?.substring(0, 50) + '...');
     
     logger.logRequest(req, "Starting OpenAI Whisper transcription", {
-      audioSource: audioSource.substring(0, 100) + '...' // Log solo i primi 100 caratteri per sicurezza
+      audioSource: audioSource.substring(0, 100) + '...'
     });
 
     // Scarica il file dall'URL del blob
+    console.log('[WHISPER DEBUG] Starting fetch from blob URL');
     logger.logRequest(req, "Downloading audio file from blob URL");
+    
     const response = await fetch(audioSource);
+    console.log('[WHISPER DEBUG] Fetch response status:', response.status);
+    
     if (!response.ok) {
-      throw new Error(`Failed to fetch audio file: ${response.status}`);
+      console.log('[WHISPER DEBUG] Failed to fetch audio file:', response.status, response.statusText);
+      throw new Error(`Failed to fetch audio file: ${response.status} ${response.statusText}`);
     }
     
     const audioBuffer = await response.arrayBuffer();
-    const audioFile = new File([audioBuffer], 'audio.mp3', { type: 'audio/mpeg' });
-
+    console.log('[WHISPER DEBUG] Downloaded buffer size:', audioBuffer.byteLength);
+    
+    // Crea un blob invece di File (più compatibile con Vercel)
+    const audioBlob = new Blob([audioBuffer], { type: 'audio/mpeg' });
+    
     logger.logRequest(req, "Downloaded audio file, starting transcription", {
       fileSize: audioBuffer.byteLength
     });
 
+    console.log('[WHISPER DEBUG] Starting OpenAI transcription');
+
     // Chiamata a OpenAI Whisper
     const transcription = await client.audio.transcriptions.create({
-      file: audioFile,
+      file: audioBlob,
       model: "whisper-1",
-      language: "it", // Italiano
+      language: "it",
       response_format: "text"
     });
+
+    console.log('[WHISPER DEBUG] Transcription completed, length:', transcription.length);
 
     const processingTime = Date.now() - startTime;
 
