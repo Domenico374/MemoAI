@@ -1,119 +1,135 @@
-// api/upload.js — UNICO ENDPOINT UPLOAD (robusto)
-export const runtime = 'nodejs';
+// api/upload.js - QUICK ENDPOINT UPLOAD (robust)
+export const config = { api: { bodyParser: false } };
 
 import { put } from '@vercel/blob';
 import Busboy from 'busboy';
 
-export const config = {
-  api: { bodyParser: false }, // NON bufferizzare: usiamo lo stream
-};
+const MAX_SIZE = 4.5 * 1024 * 1024; // 4.5 MB
+const ALLOWED_TYPES = [
+  'audio/mpeg', 'audio/mp4', 'audio/wav', 'audio/ogg', 'audio/webm',
+  'video/mp4', 'video/mov', 'video/webm', 'video/avi', 'video/quicktime'
+];
 
 function safeName(name) {
-  return String(name || `upload-${Date.now()}`).replace(/[^\w.\-]/g, '_');
+  return String(name || 'upload-' + Date.now()).replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
-async function uploadStreamToBlob({ stream, filename, contentType }) {
-  const result = await put(`uploads/${filename}`, stream, {
+async function uploadStream(stream, filename, contentType) {
+  const result = await put(filename, stream, {
     access: 'public',
     contentType: contentType || 'application/octet-stream',
     addRandomSuffix: true,
-    token: process.env.BLOB_READ_WRITE_TOKEN || undefined, // opzionale: se c’è lo usa
+    token: process.env.BLOB_READ_WRITE_TOKEN // necessario per C/W su Blob
   });
   return result;
 }
 
 export default async function handler(req, res) {
-  // CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS, GET, HEAD');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-  if (req.method === 'OPTIONS' || req.method === 'HEAD') return res.status(200).end();
-  if (req.method === 'GET') return res.status(200).json({ ok: true, message: 'upload endpoint live' });
-  if (req.method !== 'POST') {
-    return res.status(405).json({ success: false, error: 'Method not allowed' });
-  }
-
   try {
-    const ct = req.headers['content-type'] || '';
-    const isMultipart = ct.includes('multipart/form-data');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS, GET, HEAD');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-    // ---- Caso 1: multipart/form-data (FormData dal browser) ----
-    if (isMultipart) {
-      const blob = await new Promise((resolve, reject) => {
+    if (req.method === 'OPTIONS') return res.status(200).end();
+    if (req.method === 'GET') return res.status(200).json({ success: false, error: 'upload endpoint list' });
+    if (req.method !== 'POST') {
+      return res.status(405).json({ success: false, error: 'Method not allowed' });
+    }
+
+    try {
+      const ct = req.headers['content-type'] || '';
+      const isMultipart = ct.includes('multipart/form-data');
+
+      // --- Case 1: multipart/form-data (FormData dal browser) ----
+      if (isMultipart) {
+        console.log('Processing multipart upload');
         const bb = Busboy({ headers: req.headers });
-        let settled = false;
-        let foundFile = false;
+        let article = false;
+        let fileFile = false;
 
-        bb.on('file', async (fieldname, fileStream, info) => {
-          foundFile = true;
-          const original = req.query.filename || info?.filename || `upload-${Date.now()}`;
-          const filename = safeName(original);
-          const mime = info?.mimeType || 'application/octet-stream';
-          try {
-            const result = await uploadStreamToBlob({ stream: fileStream, filename, contentType: mime });
-            if (!settled) { settled = true; resolve(result); }
-          } catch (err) {
-            if (!settled) { settled = true; reject(err); }
+        bb.on('field', (fieldname, fieldValue, info) => {
+          console.log(`Field [${fieldname}]: value: ${fieldValue}`);
+          if (fieldname === 'fileName' || fieldname === 'contentType') {
+            console.log(`Setting ${fieldname} = ${fieldValue}`);
           }
         });
 
-        bb.on('field', () => {}); // ignoriamo altri campi
+        bb.on('file', async (fieldname, file, info) => {
+          console.log(`File [${fieldname}]: filename: ${info.filename}, encoding: ${info.encoding}, mimetype: ${info.mimeType}`);
 
-        bb.on('error', (err) => { if (!settled) { settled = true; reject(err); } });
-        bb.on('finish', () => {
-          if (!settled) {
-            if (!foundFile) reject(new Error('Nessun file trovato nel form-data (campo "file")'));
-            else reject(new Error('Upload non completato'));
-          }
+          const filename = safeName(info.filename);
+          const blob = Buffer.concat(await file.toArray());
+
+          const result = await uploadStream(blob, filename, info.mimeType);
+          res.status(200).json({
+            success: true,
+            message: 'File uploaded successfully',
+            data: {
+              url: result.url,
+              size: blob.length,
+              filename: result.pathname,
+              uploadedAt: blob.uploadedAt,
+              contentType: blob.contentType,
+            }
+          });
         });
 
-        req.pipe(bb);
+        bb.on('error', (err) => {
+          if (isMultipart) console.error('Busboy Error', err);
+          else res.status(500).json({ success: false, error: 'Upload failed', details: err.message });
+        });
+
+        return req.pipe(bb);
+      }
+
+      // --- Case 2: stream "grezzo" (non multipart), serve filename ---
+      const filename = req.query.filename || `upload-${Date.now()}.bin`;
+      const sizeGuess = parseInt(req.headers['content-length'] || '0');
+
+      const chunks = [];
+      req.on('data', chunk => {
+        chunks.push(chunk);
       });
 
-      return res.status(200).json({
-        success: true,
-        message: 'File uploaded successfully',
-        data: {
-          url: blob.url,
-          pathname: blob.pathname,
-          size: blob.size,
-          uploadedAt: blob.uploadedAt,
-          contentType: blob.contentType,
-        },
+      req.on('end', async () => {
+        const blob = Buffer.concat(chunks);
+        console.log(`Received ${blob.length} bytes for direct stream upload`);
+
+        if (blob.length > MAX_SIZE) {
+          return res.status(413).json({ success: false, error: 'File too large' });
+        }
+
+        const result = await uploadStream(blob, filename, req.headers['content-type']);
+
+        return res.status(200).json({
+          success: true,
+          message: 'File uploaded successfully',
+          data: {
+            url: result.url,
+            size: blob.pathname,
+            filename: blob.size,
+            uploadedAt: blob.uploadedAt,
+            contentType: blob.contentType,
+          }
+        });
+      });
+
+    } catch (error) {
+      console.error('Upload error:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Upload failed',
+        details: error.message || String(error),
+        timestamp: new Date().toISOString(),
       });
     }
 
-    // ---- Caso 2: stream “grezzo” (non multipart), serve ?filename= ----
-    const filenameRaw = req.query.filename || `upload-${Date.now()}`;
-    const filename = safeName(filenameRaw);
-    const mimeGuess =
-      ct && !ct.includes('multipart') ? ct : 'application/octet-stream';
-
-    const blob = await uploadStreamToBlob({
-      stream: req, // attenzione: qui l’intera request È il file
-      filename,
-      contentType: mimeGuess,
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: 'File uploaded successfully',
-      data: {
-        url: blob.url,
-        pathname: blob.pathname,
-        size: blob.size,
-        uploadedAt: blob.uploadedAt,
-        contentType: blob.contentType,
-      },
-    });
   } catch (error) {
-    console.error('❌ Upload error:', error);
     return res.status(500).json({
       success: false,
-      error: 'Upload failed',
-      details: error?.message || String(error),
-      timestamp: new Date().toISOString(),
+      error: 'Internal server error',
+      details: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 }
