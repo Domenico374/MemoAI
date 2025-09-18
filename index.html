@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Memo AI</title>
 <style>
-  /* Container principale */
   body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     background: #f9fafb;
@@ -20,22 +19,9 @@
     box-shadow: 0 4px 24px rgba(100,100,100,0.07);
     padding: 30px 40px;
   }
-
-  h1 {
-    font-size: 1.8rem;
-    color: #1571e8;
-    margin-bottom: 0.5rem;
-  }
-
-  h2 {
-    font-weight: 600;
-    color: #121317;
-    margin: 10px 0 8px;
-  }
-
-  .section {
-    margin-bottom: 24px;
-  }
+  h1 { font-size: 1.8rem; color: #1571e8; margin-bottom: 0.5rem; }
+  h2 { font-weight: 600; color: #121317; margin: 10px 0 8px; }
+  .section { margin-bottom: 24px; }
 
   /* Pulsanti */
   button {
@@ -65,7 +51,7 @@
     background: #f3f4f6;
     color: #374151;
   }
-  /* Input file */
+
   input[type="file"] {
     font-size: 14px;
     padding: 6px 10px;
@@ -73,8 +59,6 @@
     border: 1px solid #d1d5db;
     cursor: pointer;
   }
-
-  /* Textarea appunti */
   textarea {
     width: 100%;
     height: 140px;
@@ -86,8 +70,6 @@
     font-size: 1rem;
     color: #242424;
   }
-
-  /* Layout in griglia semplice per analisi */
   .grid-2x2 {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -110,8 +92,6 @@
     color: #555;
     font-size: 0.9rem;
   }
-
-  /* Box verbale bpm */
   #verbale-box {
     background: #f3f6fb;
     border-radius: 12px;
@@ -120,33 +100,64 @@
     line-height: 1.4;
     min-height: 80px;
   }
-
-  /* Barra di info in alto */
   #info-bar {
     margin-bottom: 20px;
     font-size: 0.85rem;
     color: #2489f3;
+  }
+
+  /* Loader animato */
+  .loader {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #439eff;
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    animation: spin 1s linear infinite;
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 10px;
+  }
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  /* Drag & drop area */
+  #drop-area {
+    border: 2px dashed #71C7E3;
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+    color: #5f6368;
+    font-size: 1rem;
+    margin-bottom: 24px;
+    transition: background-color 0.3s ease;
+  }
+  #drop-area.dragover {
+    background-color: #e9f3fe;
   }
 </style>
 </head>
 <body>
   <div id="app">
     <h1>Memo AI</h1>
-    <div id="info-bar" aria-live="polite">
-      File elaborati: 0 | Ultima attività: -
+    <div id="info-bar" aria-live="polite">File elaborati: 0 | Ultima attività: -</div>
+
+    <div id="drop-area" aria-label="Trascina qui il file o usa il seleziona file">
+      <p>Trascina il file audio qui o usa il pulsante qui sotto</p>
+      <input type="file" id="fileInput" aria-describedby="fileHelp" />
     </div>
 
-    <div class="section" aria-label="Carica file">
-      <h2>Carica file</h2>
-      <input type="file" id="fileInput" aria-describedby="fileHelp" />
-      <button id="uploadBtn" class="btn-primary">Carica e Trascrivi</button>
-      <p id="fileHelp" style="font-size:0.85rem; color:#666;">
-        Suggerimento: per file > 4.5 MB usare versioni ridotte. I PDF richiederanno OCR.
-      </p>
-    </div>
+    <button id="uploadBtn" class="btn-primary" disabled>Carica e Trascrivi</button><span id="loadingIndicator" style="display:none;" class="loader"></span>
+
+    <p id="fileHelp" style="font-size:0.85rem; color:#666; margin-top: 8px;">
+      Suggerimento: per file > 4.5 MB usare versioni ridotte. I PDF richiederanno OCR.
+    </p>
 
     <div class="section" aria-label="Anteprima">
       <h2>Anteprima</h2>
+      <audio id="audioPreview" controls style="width: 100%; border-radius: 12px; margin-bottom: 12px; display:none;"></audio>
       <div id="previewBox" style="min-height:60px; padding: 8px; border: 1px solid #ddd; border-radius: 8px; background:#fdfdfd; overflow-wrap: break-word; font-size: 0.9rem;">
         L'anteprima comparirà qui...
       </div>
@@ -194,13 +205,53 @@
   </div>
 
   <script>
-    // Questo script andrà adattato sulle funzionalità di caricamento e interazione attuale
-    document.getElementById('uploadBtn').addEventListener('click', async () => {
-      const fileInput = document.getElementById('fileInput');
+    const fileInput = document.getElementById('fileInput');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    const previewBox = document.getElementById('previewBox');
+    const audioPreview = document.getElementById('audioPreview');
+    const notesArea = document.getElementById('notesArea');
+
+    // Abilita il pulsante solo quando un file è selezionato
+    fileInput.addEventListener('change', () => {
+      uploadBtn.disabled = !fileInput.files.length;
+      if (fileInput.files.length) {
+        // Prepara player audio per anteprima
+        audioPreview.src = URL.createObjectURL(fileInput.files[0]);
+        audioPreview.style.display = 'block';
+      } else {
+        audioPreview.style.display = 'none';
+      }
+    });
+
+    // Gestione drag and drop
+    const dropArea = document.getElementById('drop-area');
+    dropArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropArea.classList.add('dragover');
+    });
+    dropArea.addEventListener('dragleave', () => {
+      dropArea.classList.remove('dragover');
+    });
+    dropArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropArea.classList.remove('dragover');
+      if (e.dataTransfer.files.length) {
+        fileInput.files = e.dataTransfer.files;
+        uploadBtn.disabled = false;
+        audioPreview.src = URL.createObjectURL(e.dataTransfer.files[0]);
+        audioPreview.style.display = 'block';
+      }
+    });
+
+    uploadBtn.addEventListener('click', async () => {
       if (!fileInput.files.length) {
         alert('Seleziona un file prima di caricare');
         return;
       }
+      uploadBtn.disabled = true;
+      loadingIndicator.style.display = 'inline-block';
+
       const file = fileInput.files[0];
       const formData = new FormData();
       formData.append('file', file);
@@ -214,29 +265,35 @@
           throw new Error('Errore server: ' + response.statusText);
         }
         const data = await response.json();
-        // Aggiorna anteprima e notes con trascritto
-        document.getElementById('previewBox').textContent = `Trascrizione:\n${data.text}`;
-        document.getElementById('notesArea').value = data.text;
+        previewBox.textContent = `Trascrizione:\n${data.text}`;
+        notesArea.value = data.text;
       } catch (error) {
         alert('Errore durante upload: ' + error.message);
         console.error(error);
+      } finally {
+        uploadBtn.disabled = false;
+        loadingIndicator.style.display = 'none';
       }
     });
 
     document.getElementById('clearPreviewBtn').addEventListener('click', () => {
-      document.getElementById('previewBox').textContent = "L'anteprima comparirà qui...";
+      previewBox.textContent = "L'anteprima comparirà qui...";
+      audioPreview.src = "";
+      audioPreview.style.display = 'none';
+      fileInput.value = '';
+      uploadBtn.disabled = true;
     });
 
     document.getElementById('fullScreenBtn').addEventListener('click', () => {
-      // Possibile apertura a schermo intero o altro comportamento
-      alert("Funzione schermata intera non ancora implementata");
+      alert("Funzione schermata intera non implementata");
     });
 
     document.getElementById('clearNotesBtn').addEventListener('click', () => {
-      document.getElementById('notesArea').value = "";
+      notesArea.value = "";
     });
 
-    // Altri bottoni e funzionalità possono essere implementati analogamente
+    // Puoi aggiungere qui ulteriori listener per gli altri bottoni (Verbale, Genera verbale, ecc.)
   </script>
+
 </body>
 </html>
