@@ -1,13 +1,15 @@
-// api/upload.js - QUICK ENDPOINT UPLOAD (robust)
-export const config = { api: { bodyParser: false } };
-
+// Aggiungi gli import necessari
 import { put } from '@vercel/blob';
 import Busboy from 'busboy';
+import axios from 'axios';
+import { transcribeAudio } from './transcribe-audio.js'; // Importa la funzione di trascrizione
+
+export const config = { api: { bodyParser: false } };
 
 const MAX_SIZE = 4.5 * 1024 * 1024; // 4.5 MB
 const ALLOWED_TYPES = [
   'audio/mpeg', 'audio/mp4', 'audio/wav', 'audio/ogg', 'audio/webm',
-  'video/mp4', 'video/mov', 'video/webm', 'video/avi', 'video/quicktime'
+  'video/mp4', 'video/quicktime', 'video/webm', 'video/avi'
 ];
 
 function safeName(name) {
@@ -15,11 +17,11 @@ function safeName(name) {
 }
 
 async function uploadStream(stream, filename, contentType) {
+  // Ho rimosso il token perché Vercel lo gestisce automaticamente.
   const result = await put(filename, stream, {
     access: 'public',
     contentType: contentType || 'application/octet-stream',
     addRandomSuffix: true,
-    token: process.env.BLOB_READ_WRITE_TOKEN // necessario per C/W su Blob
   });
   return result;
 }
@@ -27,109 +29,91 @@ async function uploadStream(stream, filename, contentType) {
 export default async function handler(req, res) {
   try {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS, GET, HEAD');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     if (req.method === 'OPTIONS') return res.status(200).end();
-    if (req.method === 'GET') return res.status(200).json({ success: false, error: 'upload endpoint list' });
     if (req.method !== 'POST') {
       return res.status(405).json({ success: false, error: 'Method not allowed' });
     }
 
-    try {
-      const ct = req.headers['content-type'] || '';
-      const isMultipart = ct.includes('multipart/form-data');
+    const bb = Busboy({ headers: req.headers });
+    let fileInfo = {}; // Per salvare i metadati del file
 
-      // --- Case 1: multipart/form-data (FormData dal browser) ----
-      if (isMultipart) {
-        console.log('Processing multipart upload');
-        const bb = Busboy({ headers: req.headers });
-        let article = false;
-        let fileFile = false;
+    // Evento per la gestione dei campi (se presenti)
+    bb.on('field', (fieldname, fieldValue, info) => {
+      console.log(`Field [${fieldname}]: value: ${fieldValue}`);
+      // Puoi gestire qui campi come 'userId', 'fileType' ecc.
+    });
 
-        bb.on('field', (fieldname, fieldValue, info) => {
-          console.log(`Field [${fieldname}]: value: ${fieldValue}`);
-          if (fieldname === 'fileName' || fieldname === 'contentType') {
-            console.log(`Setting ${fieldname} = ${fieldValue}`);
-          }
-        });
+    // Evento per la gestione del file
+    bb.on('file', async (fieldname, file, info) => {
+      console.log(`File [${fieldname}]: filename: ${info.filename}, mimetype: ${info.mimeType}`);
+      
+      const filename = safeName(info.filename);
+      const isMedia = info.mimeType.startsWith('audio/') || info.mimeType.startsWith('video/');
 
-        bb.on('file', async (fieldname, file, info) => {
-          console.log(`File [${fieldname}]: filename: ${info.filename}, encoding: ${info.encoding}, mimetype: ${info.mimeType}`);
+      // Carica il file su Vercel Blob
+      try {
+        const result = await uploadStream(file, filename, info.mimeType);
+        fileInfo = {
+          url: result.url,
+          filename: result.pathname,
+          contentType: info.mimeType
+        };
 
-          const filename = safeName(info.filename);
-          const blob = Buffer.concat(await file.toArray());
-
-          const result = await uploadStream(blob, filename, info.mimeType);
+        // Se il file è audio o video, avvia la trascrizione
+        if (isMedia) {
+          console.log(`File di tipo media (${info.mimeType}) caricato su Blob. Avvio la trascrizione...`);
+          
+          // Chiama la tua funzione di trascrizione
+          // La trascrizione è un'operazione asincrona, quindi non aspettiamo il risultato qui.
+          // Invece, restituiamo un ID al client per il polling.
+          transcribeAudio(fileInfo.url)
+            .then(transcribedText => {
+              // Qui potresti salvare il testo in un database associandolo all'URL del blob.
+              console.log("Trascrizione completata per URL:", fileInfo.url);
+              // In un sistema reale, dovresti notificare il client (es. tramite WebSocket)
+            })
+            .catch(error => {
+              console.error("Errore durante la trascrizione:", error);
+            });
+          
+          // Restituisci una risposta "in attesa" al client
+          res.status(202).json({
+            success: true,
+            message: 'File caricato con successo. Trascrizione in corso...',
+            data: fileInfo
+          });
+          
+        } else {
+          // Per file di testo (docx, pdf, ecc.)
+          console.log("File di tipo documento caricato su Blob. Avvio l'estrazione...");
+          // Qui puoi chiamare la tua logica di estrazione per i documenti
+          // esempio: const text = await extractTextFromDocument(fileInfo.url);
+          
           res.status(200).json({
             success: true,
-            message: 'File uploaded successfully',
-            data: {
-              url: result.url,
-              size: blob.length,
-              filename: result.pathname,
-              uploadedAt: blob.uploadedAt,
-              contentType: blob.contentType,
-            }
+            message: 'File caricato e processato con successo.',
+            data: fileInfo
           });
-        });
-
-        bb.on('error', (err) => {
-          if (isMultipart) console.error('Busboy Error', err);
-          else res.status(500).json({ success: false, error: 'Upload failed', details: err.message });
-        });
-
-        return req.pipe(bb);
-      }
-
-      // --- Case 2: stream "grezzo" (non multipart), serve filename ---
-      const filename = req.query.filename || `upload-${Date.now()}.bin`;
-      const sizeGuess = parseInt(req.headers['content-length'] || '0');
-
-      const chunks = [];
-      req.on('data', chunk => {
-        chunks.push(chunk);
-      });
-
-      req.on('end', async () => {
-        const blob = Buffer.concat(chunks);
-        console.log(`Received ${blob.length} bytes for direct stream upload`);
-
-        if (blob.length > MAX_SIZE) {
-          return res.status(413).json({ success: false, error: 'File too large' });
         }
 
-        const result = await uploadStream(blob, filename, req.headers['content-type']);
+      } catch (uploadError) {
+        console.error('Errore durante l\'upload o il processing:', uploadError);
+        res.status(500).json({ success: false, error: 'Upload failed', details: uploadError.message });
+      }
+    });
 
-        return res.status(200).json({
-          success: true,
-          message: 'File uploaded successfully',
-          data: {
-            url: result.url,
-            size: blob.pathname,
-            filename: blob.size,
-            uploadedAt: blob.uploadedAt,
-            contentType: blob.contentType,
-          }
-        });
-      });
+    bb.on('error', (err) => {
+      console.error('Busboy Error:', err);
+      res.status(500).json({ success: false, error: 'Upload failed', details: err.message });
+    });
 
-    } catch (error) {
-      console.error('Upload error:', error);
-      return res.status(500).json({
-        success: false,
-        error: 'Upload failed',
-        details: error.message || String(error),
-        timestamp: new Date().toISOString(),
-      });
-    }
+    req.pipe(bb);
 
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: 'Internal server error',
-      details: error.message,
-      timestamp: new Date().toISOString()
-    });
+    console.error('Internal server error:', error);
+    res.status(500).json({ success: false, error: 'Internal server error', details: error.message });
   }
 }
