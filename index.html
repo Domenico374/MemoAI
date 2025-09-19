@@ -20,17 +20,16 @@
     });
   </script>
 </head>
-<body class="text-slate-800 theme-aqua bg-blue-50 min-h-screen">
+<body class="text-slate-800 bg-blue-50 min-h-screen">
   <!-- Navbar sticky -->
-  <header id="main-navbar" class="sticky top-0 z-30 border-b bg-white/90 backdrop-blur shadow">
+  <header class="sticky top-0 z-30 border-b bg-white/90 backdrop-blur shadow">
     <div class="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between">
       <div class="flex items-center gap-2">
         <span class="text-blue-600 font-bold text-xl flex items-center gap-1">
-          <svg class="w-8 h-8 mr-1" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
+          <svg class="w-8 h-8" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
           Memo AI
         </span>
-        <span id="navStatusApi"
-          class="text-xs px-3 py-1 ml-3 rounded-full font-bold bg-emerald-100 text-emerald-700 transition">checking…</span>
+        <span id="navStatusApi" class="text-xs px-3 py-1 ml-3 rounded-full font-bold bg-emerald-100 text-emerald-700">checking…</span>
       </div>
       <nav class="hidden md:flex gap-6">
         <a href="#" class="text-slate-500 hover:text-blue-600 font-semibold transition">Home</a>
@@ -65,7 +64,7 @@
         </button>
       </div>
       <div id="dropArea"
-        class="dropzone bg-blue-50 border-2 border-dashed border-blue-300 rounded-xl py-8 text-center text-blue-600 font-semibold hover:bg-blue-100 transition min-h-[80px] flex items-center justify-center">
+        class="bg-blue-50 border-2 border-dashed border-blue-300 rounded-xl py-8 text-center text-blue-600 font-semibold min-h-[80px] flex items-center justify-center hover:bg-blue-100 transition">
         <svg class="w-7 h-7 inline mr-2 -mt-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
         </svg>
@@ -206,7 +205,7 @@
     </section>
   </div>
   <script>
-    // Temi
+    // Tema toggle
     (function(){
       const saved = localStorage.getItem('memoai_theme') || 'aqua';
       document.body.classList.remove('theme-ocean','theme-sunset','theme-mint','theme-aqua');
@@ -220,7 +219,7 @@
         });
       });
     })();
-    // Health badge
+    // Badge stato API
     async function health(){
       var badge = document.getElementById('navStatusApi');
       try {
@@ -239,12 +238,11 @@
       }
     }
     health();
-    // Drop & drag highlight
+    // Drop-area evidenziata
     (()=>{
       const dropArea = document.getElementById('dropArea');
       const uploader = document.getElementById('uploader');
       if (!dropArea || !uploader) return;
-      dropArea.classList.add('dropzone');
       ['dragenter','dragover'].forEach(ev =>
         dropArea.addEventListener(ev, e => { e.preventDefault(); dropArea.classList.add('bg-blue-100', 'border-blue-400'); })
       );
@@ -253,10 +251,10 @@
       );
       dropArea.addEventListener('drop', e => {
         const files = [...(e.dataTransfer?.files||[])];
-        if (files.length) handleFiles(files);
+        if (files.length && typeof handleFiles === "function") handleFiles(files);
       });
     })();
-    // TODO: Funzioni di app, caricamento, note, anteprima, ecc. (come nel tuo JS)
+    // ...inserisci qui il tuo JS di funzioni per i pulsanti e caricamento
   </script>
 </body>
 </html>
