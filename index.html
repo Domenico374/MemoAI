@@ -66,4 +66,690 @@
     .btn--muted{     background:var(--muted);     color:#0b1220 } .btn--muted:hover{ filter:brightness(.97) }
     .btn--secondary{ background:var(--secondary); color:#fff }   .btn--secondary:hover{ filter:brightness(.95) }
     .btn--success{   background:var(--success);   color:#fff }   .btn--success:hover{ filter:brightness(.95) }
-    .btn--primary{   background:var(--primary);   color:#fff }   .bt
+    .btn--primary{   background:var(--primary);   color:#fff }   .btn--primary:hover{ filter:brightness(.95) }
+    .btn--danger{    background:var(--danger);    color:#fff }   .btn--danger:hover{ filter:brightness(.95) }
+    .btn--cyan{      background:var(--cyan);      color:#fff }   .btn--cyan:hover{ filter:brightness(.95) }
+    .btn--fuchsia{   background:var(--fuchsia);   color:#fff }   .btn--fuchsia:hover{ filter:brightness(.95) }
+    .btn--amber{     background:var(--amber);     color:#0b1220 } .btn--amber:hover{ filter:brightness(.97) }
+    .btn--teal{      background:var(--teal);      color:#fff }   .btn--teal:hover{ filter:brightness(.95) }
+    .btn.is-active{ box-shadow:0 0 0 3px rgba(16,185,129,.2), 0 6px 14px rgba(2,6,23,.12) }
+    .btn.is-loading{ position:relative; pointer-events:none }
+    .btn.is-loading>*{ visibility:hidden }
+    .btn.is-loading::after{
+      content:""; width:1.25em; height:1.25em; border-radius:999px; border:2px solid currentColor; border-top-color:transparent;
+      position:absolute; inset:0; margin:auto; animation:spin .9s linear infinite;
+    }
+    @keyframes spin{ to{ transform:rotate(360deg) } }
+
+    .pill{ font:600 12px/1 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif }
+
+    /* Dropzone */
+    .dropzone{border:2px dashed #0ea5e9;border-radius:12px;transition:background .2s,border-color .2s}
+    .dropzone.is-dragover{background:rgba(14,165,233,.08);border-color:#38bdf8}
+    .dropzone-text { color:#64748b }
+    .dropzone.is-dragover .dropzone-text { color:#0ea5e9 }
+
+    /* Tooltip (title-like) */
+    .tooltip{ position:relative; cursor:help }
+    .tooltip::after{
+      content:attr(data-tooltip); position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%);
+      padding:6px 10px; font-size:12px; background:#333; color:#fff; border-radius:6px; white-space:nowrap;
+      opacity:0; visibility:hidden; transition:opacity .2s, visibility .2s; z-index:10;
+    }
+    .tooltip:hover::after{ opacity:1; visibility:visible }
+
+    /* Toast / notification */
+    .notification{
+      position:fixed; right:16px; bottom:16px; z-index:1000; display:flex; flex-direction:column; gap:8px;
+    }
+    .toast-item{
+      background:#fff; border:1px solid rgba(2,6,23,.08); box-shadow:0 10px 30px rgba(2,6,23,.15);
+      padding:10px 12px; border-radius:10px; font:500 13px system-ui;
+      transition:opacity .25s, transform .25s;
+    }
+    .toast-item.ok{ border-color:rgba(16,185,129,.25) }
+    .toast-item.err{ border-color:rgba(244,63,94,.25) }
+  </style>
+</head>
+
+<body class="text-slate-800 theme-aqua">
+  <!-- Toasts -->
+  <div id="toast" class="notification"></div>
+
+  <!-- NAV -->
+  <header id="main-navbar" class="sticky top-0 z-30 border-b bg-white/90 backdrop-blur">
+    <div class="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-blue-600 font-bold text-xl">Memo AI</span>
+        <span class="text-xs px-2 py-1 ml-3 rounded-full bg-emerald-100 text-emerald-700" id="navStatusApi">checking…</span>
+      </div>
+      <nav class="hidden md:flex gap-6">
+        <a class="text-slate-500 hover:text-blue-600 font-semibold transition" href="#">Home</a>
+        <a class="text-slate-500 hover:text-blue-600 font-semibold transition" href="#">Guida</a>
+        <a class="text-slate-500 hover:text-blue-600 font-semibold transition" href="#">Info</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Theme buttons -->
+  <div class="max-w-4xl mx-auto px-4 py-2 flex justify-end gap-2">
+    <button data-theme="ocean"  class="pill px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200">Ocean</button>
+    <button data-theme="sunset" class="pill px-2.5 py-1 rounded-full bg-rose-100 text-rose-700 hover:bg-rose-200">Sunset</button>
+    <button data-theme="mint"   class="pill px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200">Mint</button>
+    <button data-theme="aqua"   class="pill px-2.5 py-1 rounded-full bg-teal-100 text-teal-700 hover:bg-teal-200">Aqua</button>
+  </div>
+
+  <div class="max-w-4xl mx-auto p-6">
+    <!-- Upload -->
+    <section class="bg-white rounded-2xl shadow p-5 mb-6 dropzone" id="dropArea">
+      <div class="flex flex-col items-center justify-center p-6 text-center">
+        <i class="fa-solid fa-cloud-arrow-up text-4xl mb-4 text-slate-400"></i>
+        <h2 class="text-lg font-semibold dropzone-text">Trascina qui i tuoi file o clicca per caricarli</h2>
+        <p class="text-xs text-slate-500 mt-1">Suggerimento: per file &gt; 4.5 MB usare versioni ridotte. I PDF scansionati richiederanno OCR.</p>
+        <input id="uploader" type="file" multiple
+               accept=".txt,.md,.pdf,.docx,.mp3,.m4a,.wav,.ogg,.webm,.mp4,.mov,.mkv" class="hidden" />
+      </div>
+      <ul id="queue" class="mt-4 space-y-2 text-sm"></ul>
+    </section>
+
+    <!-- Anteprima + Appunti -->
+    <div class="grid md:grid-cols-2 gap-6 mb-6">
+      <!-- Anteprima -->
+      <section class="bg-white rounded-2xl shadow p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold">Anteprima</h2>
+          <button id="btnClearPreview" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200"
+                  data-tooltip="Pulisce l'area di anteprima">Pulisci</button>
+        </div>
+        <div id="preview" class="prose max-w-none border border-slate-200 rounded-xl p-4 bg-slate-50 text-sm h-64 overflow-y-auto">
+          <p class="text-slate-500">L’anteprima comparirà qui…</p>
+        </div>
+      </section>
+
+      <!-- Appunti -->
+      <section class="bg-white rounded-2xl shadow p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold">Appunti</h2>
+          <span id="notesLen" class="text-xs text-slate-500"></span>
+        </div>
+        <textarea id="notes" rows="12"
+          class="w-full h-64 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+          placeholder="Appunti trascritti o estratti…"></textarea>
+
+        <div class="mt-4 flex flex-wrap gap-2">
+          <button id="btnClean"       class="btn btn--muted tooltip" data-tooltip="Rimuove spazi extra e caratteri indesiderati">
+            <i class="fa-solid fa-broom"></i> Pulizia
+          </button>
+          <button id="btnMinutesAI"   class="btn btn--secondary tooltip" data-tooltip="Genera un verbale basato sull'IA">
+            <i class="fa-solid fa-clipboard"></i> Verbale
+          </button>
+          <button id="btnTranscribe"  class="btn btn--success tooltip" data-tooltip="Trascrive il testo da file audio o video">
+            <i class="fa-solid fa-microphone"></i> Trascrizione
+          </button>
+          <button id="btnGenerate"    class="btn btn--primary tooltip" data-tooltip="Genera un report formattato">
+            <i class="fa-solid fa-magic"></i> Genera verbale
+          </button>
+          <button id="btnReset"       class="btn btn--danger tooltip" data-tooltip="Resetta tutti i campi">
+            <i class="fa-solid fa-undo"></i> Resettare
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <!-- Analisi intelligente -->
+    <section class="bg-white rounded-2xl shadow p-5 mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold">Analisi intelligente</h2>
+        <div class="flex flex-wrap gap-2">
+          <button id="btnSummarize"   class="btn btn--cyan tooltip" data-tooltip="Crea un riassunto conciso del testo">
+            <i class="fa-solid fa-file-lines"></i> Riassunto
+          </button>
+          <button id="btnHighlights"  class="btn btn--fuchsia tooltip" data-tooltip="Estrae i punti chiave">
+            <i class="fa-solid fa-highlighter"></i> Punti salienti
+          </button>
+          <button id="btnTodos"       class="btn btn--amber tooltip" data-tooltip="Identifica le azioni e gli impegni">
+            <i class="fa-solid fa-list-check"></i> To-Do
+          </button>
+          <button id="btnSuggestTags" class="btn btn--teal tooltip" data-tooltip="Suggerisce tag per organizzare il contenuto">
+            <i class="fa-solid fa-tags"></i> Suggerisci tag
+          </button>
+        </div>
+      </div>
+      <div class="grid gap-4 md:grid-cols-2">
+        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
+          <h3 class="font-medium mb-2">Riassunto</h3>
+          <div id="summaryBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
+        </div>
+        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
+          <h3 class="font-medium mb-2">Punti salienti</h3>
+          <div id="highlightsBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
+        </div>
+        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
+          <h3 class="font-medium mb-2">To-Do</h3>
+          <div id="todoBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
+        </div>
+        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
+          <h3 class="font-medium mb-2">Tag suggeriti</h3>
+          <div id="tagsBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Verbale -->
+    <section class="bg-white rounded-2xl shadow p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold">Verbale</h2>
+        <div class="flex gap-2">
+          <button id="btnCopy" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200 tooltip"
+                  data-tooltip="Copia il verbale negli appunti"><i class="fa-solid fa-copy"></i> Copia</button>
+          <button id="btnDownload" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200 tooltip"
+                  data-tooltip="Scarica come file Markdown"><i class="fa-solid fa-download"></i> Scarica .md</button>
+        </div>
+      </div>
+      <pre id="result" class="whitespace-pre-wrap text-sm leading-6 text-slate-800">Il verbale comparirà qui…</pre>
+    </section>
+  </div>
+
+  <script>
+    /* ======= Utils / UI ======= */
+    function $(s){ return document.querySelector(s); }
+    const queueEl = $('#queue');
+    const previewEl = $('#preview');
+
+    function showToast(msg, type='ok', ms=2600){
+      const box = $('#toast');
+      const el = document.createElement('div');
+      el.className = 'toast-item ' + (type==='err'?'err':'ok');
+      el.textContent = msg;
+      el.style.opacity='0'; el.style.transform='translateY(6px)';
+      box.appendChild(el);
+      requestAnimationFrame(()=>{ el.style.opacity='1'; el.style.transform='translateY(0)' });
+      setTimeout(()=>{ el.style.opacity='0'; el.style.transform='translateY(6px)';
+        setTimeout(()=>el.remove(), 250);
+      }, ms);
+    }
+
+    function addQueueRow(name, meta, status) {
+      const li = document.createElement('li');
+      li.className = "border rounded-lg px-3 py-2";
+      li.dataset.name = name;
+      li.innerHTML = `
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="font-medium">${name}</div>
+            <div class="text-slate-500 text-xs">${meta} · <span class="status">${status}</span></div>
+          </div>
+          <div class="text-xs text-slate-500 hidden md:block"><span class="pct">0%</span></div>
+        </div>
+        <div class="w-full h-1.5 bg-slate-200 rounded mt-2 overflow-hidden">
+          <div class="bar h-1.5 bg-blue-500" style="width:0%"></div>
+        </div>`;
+      queueEl.appendChild(li);
+      return li;
+    }
+    function setRowStatus(li, status, danger){
+      const s = li.querySelector('.status');
+      s.textContent = status;
+      s.className = "status " + (danger ? "text-red-500" : "text-slate-500");
+    }
+    function setRowProgress(li, pct){
+      pct = Math.max(0, Math.min(100, pct|0));
+      li.querySelector('.bar').style.width = pct + '%';
+      li.querySelector('.pct').textContent = pct + '%';
+    }
+    function clearQueue(){ queueEl.innerHTML=''; }
+
+    function setPreviewHTML(html){
+      previewEl.innerHTML = html || '<p class="text-slate-500">L’anteprima comparirà qui…</p>';
+    }
+    function escapeHTML(s){ s=String(s||""); return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function arrayBufferToDataURL(ab, mime){
+      mime = mime || 'application/pdf';
+      var bytes = new Uint8Array(ab), bin = '';
+      for (var i=0;i<bytes.length;i++) bin += String.fromCharCode(bytes[i]);
+      return 'data:'+mime+';base64,'+btoa(bin);
+    }
+    function appendToNotes(header, text){
+      const ta = $('#notes');
+      const section = (header ? "["+header+"]\n" : "") + (text || "");
+      ta.value = (ta.value ? ta.value + "\n---\n" : "") + section;
+      ta.dispatchEvent(new Event('input'));
+    }
+
+    /* ======= Theme ======= */
+    (function(){
+      const saved = localStorage.getItem('memoai_theme') || 'aqua';
+      document.body.classList.remove('theme-ocean','theme-sunset','theme-mint','theme-aqua');
+      document.body.classList.add('theme-'+saved);
+      document.querySelectorAll('[data-theme]').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const t = btn.dataset.theme;
+          document.body.classList.remove('theme-ocean','theme-sunset','theme-mint','theme-aqua');
+          document.body.classList.add('theme-'+t);
+          localStorage.setItem('memoai_theme', t);
+        });
+      });
+    })();
+
+    /* ======= Autosave Appunti ======= */
+    (function autosaveNotes(){
+      const KEY='memoai_notes_v2';
+      const TA = $('#notes');
+      const LEN = $('#notesLen');
+
+      const saved = localStorage.getItem(KEY);
+      if (saved && !TA.value) TA.value = saved;
+
+      const updateLen = ()=>{
+        const len = (TA.value||'').length;
+        LEN.textContent = `${len} caratteri`;
+      };
+      updateLen();
+
+      let t;
+      TA.addEventListener('input', ()=>{
+        clearTimeout(t);
+        t=setTimeout(()=>{ localStorage.setItem(KEY, TA.value||''); updateLen(); }, 250);
+      });
+    })();
+
+    /* ======= API helpers & health ======= */
+    async function health(){
+      var badge = $('#navStatusApi');
+      try {
+        var u = await fetch('/api/upload', { method: 'OPTIONS' });
+        var e = await fetch('/api/extract', { method: 'OPTIONS' });
+        if (u.ok && e.ok) {
+          badge.textContent = 'API ok';
+          badge.className = "text-xs px-2 py-1 ml-3 rounded-full bg-emerald-100 text-emerald-700";
+        } else {
+          badge.textContent = 'API parziali';
+          badge.className = "text-xs px-2 py-1 ml-3 rounded-full bg-amber-100 text-amber-700";
+        }
+      } catch(err){
+        badge.textContent = 'API offline';
+        badge.className = "text-xs px-2 py-1 ml-3 rounded-full bg-rose-100 text-rose-700";
+      }
+    }
+
+    async function uploadViaApi(file){
+      const fd = new FormData();
+      fd.append('file', file, file.name || 'file');
+      fd.append('contentType', file.type || 'application/octet-stream');
+      const r = await fetch('/api/upload', { method:'POST', body: fd });
+      const j = await r.json().catch(()=>({}));
+      if (!r.ok || !(j && j.data && j.data.url)) {
+        throw new Error((j && j.details) || 'Upload fallito');
+      }
+      return j.data.url;
+    }
+    async function extractWithUrl(blobUrl, name){
+      const r = await fetch('/api/extract', {
+        method:'POST', headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ fileUrl: blobUrl, fileName: name })
+      });
+      const j = await r.json().catch(()=>({}));
+      if (!r.ok) throw new Error((j && j.message) || 'Errore estrazione');
+      return (j && (j.text || j.content || j.result)) || '';
+    }
+    async function transcribeWithUrl(blobUrl){
+      const r = await fetch('/api/whisper', {
+        method:'POST', headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ url: blobUrl })
+      });
+      const j = await r.json().catch(()=>({}));
+      if (!r.ok || !(j && j.ok)) throw new Error((j && j.message) || 'Errore trascrizione');
+      return (j && j.text) || '';
+    }
+
+    /* ======= Text helpers & actions ======= */
+    function cleanText(t){
+      t = String(t || "");
+      return t.replace(/\r/g,"").replace(/[ \t]+\n/g,"\n").replace(/\n{3,}/g,"\n\n").replace(/[ \t]{2,}/g," ").trim();
+    }
+    function toMinutes(t){
+      var lines = cleanText(t).split("\n").filter(Boolean);
+      var bullets = lines.map(l=>"- " + l.trim()).join("\n");
+      var date = new Date().toLocaleString();
+      return "# Verbale\n_Data:_ "+date+"\n\n## Punti trattati\n"+bullets+"\n";
+    }
+    function toTranscriptLocal(t){
+      return cleanText(String(t||"")
+        .replace(/\[?\(?\b\d{1,2}:\d{2}(?::\d{2})?\)?\]?/g, "")
+        .replace(/\b(eh+m*|mm+|mah|cioè|tipo|allora)\b/gi, "")
+        .replace(/(?:\n?\s*[•\-–]\s+)/g, "\n"));
+    }
+    async function callTextAPI(endpoints, payload){
+      for (const ep of (endpoints||[])){
+        try{
+          const r = await fetch(ep,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+          const j = await r.json().catch(()=>({}));
+          if (r.ok){
+            const out = (j && (j.text || j.verbale || j.content || j.result)) || "";
+            if (out && typeof out === "string") return out;
+          }
+        }catch(_){ }
+      }
+      return "";
+    }
+    async function runNotesAction(kind){
+      const ta = $('#notes'); const src = (ta.value || "").trim();
+      if (!src){ showToast("Incolla o scrivi del testo negli Appunti.", 'err'); return; }
+      let out = "";
+      if (kind === "cleanup"){
+        out = await callTextAPI(["/api/cleanup"], { notes: src }) || cleanText(src);
+        ta.value = out; $('#result').textContent = out;
+        ta.dispatchEvent(new Event('input'));
+        showToast('Pulizia completata');
+      } else if (kind === "minutes"){
+        out = await callTextAPI(["/api/minutes","/api/format","/api/verbale"], { notes: src }) || toMinutes(src);
+        $('#result').textContent = out; showToast('Verbale generato');
+      } else if (kind === "transcript"){
+        out = await callTextAPI(["/api/cleanup"], { notes: src, mode: "transcript" }) || toTranscriptLocal(src);
+        ta.value = out; $('#result').textContent = out;
+        ta.dispatchEvent(new Event('input'));
+        showToast('Trascrizione (pulizia) completata');
+      }
+    }
+
+    /* ======= NLP leggera client-side ======= */
+    function splitSentences(t){
+      t = cleanText(t);
+      return t.replace(/([\.!\?])\s+([A-ZÀ-Ú])/g, "$1|$2").split("|").map(s=>s.trim()).filter(Boolean);
+    }
+    function summarizeText(t, maxSentences){
+      maxSentences = maxSentences || 5;
+      const cues=["decisione","decide","delibera","approva","stabilisce","si conviene","scadenza","entro","termine","deadline","consegna","responsabile","incarica","assegnato","owner","bilancio","budget","priorità","urgente","importante"];
+      const sents = splitSentences(t); if (!sents.length) return "";
+      const scores = sents.map((s,i)=>{
+        const lc=s.toLowerCase();
+        let cueScore=0; for (const c of cues) if (lc.includes(c)) cueScore++;
+        const pos=(i===0?1:0)+(i===sents.length-1?0.5:0);
+        const len=Math.min(s.length/120,1);
+        return {s,score:cueScore*2+pos+len*0.5};
+      }).sort((a,b)=>b.score-a.score);
+      return scores.slice(0,maxSentences).map(x=>x.s).join(" ");
+    }
+    function extractHighlights(t){
+      const txt=cleanText(t);
+      const decisions=[],deadlines=[],owners=[];
+      const lines=txt.split("\n").map(l=>l.trim()).filter(Boolean);
+      const reDate=/\b(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}|(?:\d{1,2}\s+(?:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-z]*\s+\d{4}))\b/gi;
+      for (const l of lines){
+        const ll=l.toLowerCase();
+        if (/(delibera|si decide|si stabilisce|si approva|viene approvato|si conviene)/i.test(ll)) decisions.push(l);
+        if (/(entro|scadenza|termine|deadline|entro e non oltre|per il|entro il)/i.test(ll)){
+          const m=l.match(reDate); const dm=m?m[0]:""; deadlines.push(dm?(l+" (data: "+dm+")"):l);
+        }
+        const m1=l.match(/responsabile\s*:\s*(.+)$/i);
+        const m2=l.match(/a cura di\s+(.+)$/i);
+        const m3=l.match(/si incarica\s+([A-ZÀ-Ú][A-Za-zÀ-ÿ'’\- ]+)\s+di/i);
+        const m4=l.match(/assegnat[oa]\s+a\s+([A-ZÀ-Ú][A-Za-zÀ-ÿ'’\- ]+)/i);
+        if (m1) owners.push(m1[1].trim()); else if (m2) owners.push(m2[1].trim());
+        else if (m3) owners.push(m3[1].trim()); else if (m4) owners.push(m4[1].trim());
+      }
+      const uniq=a=>Array.from(new Set(a));
+      return { decisions:uniq(decisions), deadlines:uniq(deadlines), owners:uniq(owners) };
+    }
+    function extractActions(t){
+      const lines=cleanText(t).split("\n").map(l=>l.trim()).filter(Boolean);
+      const verbs=/(inviare|invia|preparare|prepara|contattare|contatta|verificare|verifica|aggiornare|aggiorna|convocare|convoca|pagare|paga|richiedere|richiede|redigere|redigi|prenotare|prenota|organizzare|organizza|acquistare|acquista|fare|fai|eseguire|esegue)/i;
+      const reDate=/\b(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}|(?:\d{1,2}\s+(?:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-z]*\s+\d{4}))\b/gi;
+      const items=[];
+      for (const l of lines){
+        if (l[0]==="-" || l[0]==="•" || verbs.test(l)){
+          const m=l.match(reDate); const due=(m?m[0]:"")||(/(entro|deadline|scadenza|termine)/i.test(l)?"entro (data da definire)":"");
+          const mOwner=(l.match(/(?:da|a|per)\s+([A-ZÀ-Ú][A-Za-zÀ-ÿ'’\- ]+)\b/)||[])[1] ||
+                        (l.match(/(?:responsabile|assegnat[oa])\s*:\s*([A-ZÀ-Ú][A-Za-zÀ-ÿ'’\- ]+)/i)||[])[1] || "";
+          items.push({ task:l.replace(/^[\-\•]\s*/,""), owner:mOwner||null, due:due||null });
+        }
+      }
+      const seen=new Set(), out=[];
+      for (const it of items){
+        const k=(it.task+"|"+(it.owner||"")+"|"+(it.due||"")).toLowerCase();
+        if (!seen.has(k)){ seen.add(k); out.push(it); }
+      }
+      return out;
+    }
+    function renderList(el, arr, bullet){ el.textContent=(arr&&arr.length)?arr.map(x=>(bullet||"- ")+x).join("\n"):"—"; }
+    function renderTodos(el, items){
+      if (!(items && items.length)){ el.textContent="—"; return; }
+      el.textContent = items.map(it=>{
+        const who=it.owner?(" ["+it.owner+"]"):""; const due=it.due?(" (scad.: "+it.due+")"):"";
+        return "□ "+it.task+who+due;
+      }).join("\n");
+    }
+
+    /* ======= PDF locale ======= */
+    async function extractPdfTextLocal(ab, maxPages){
+      maxPages=maxPages||8;
+      const pdf=await window.pdfjsLib.getDocument({data:ab}).promise;
+      let out=''; const n=Math.min(pdf.numPages, maxPages);
+      for (let i=1;i<=n;i++){
+        const page=await pdf.getPage(i); const content=await page.getTextContent();
+        out += content.items.map(it=>it.str).join(' ') + '\n\n';
+      }
+      if (pdf.numPages>n) out += "\n[... testo troncato a "+n+"/"+pdf.numPages+" pagine ...]\n";
+      return out.trim();
+    }
+
+    /* ======= Gestione file & anteprima ======= */
+    async function handleFiles(files){
+      for (let f=0; f<files.length; f++){
+        const file=files[f]; const name=file.name||'file';
+        const ext=(name.split('.').pop()||'').toLowerCase();
+        const meta=(file.type||'(sconosciuto)')+' · '+new Intl.NumberFormat('it-IT').format(file.size)+' B';
+        const li=addQueueRow(name, meta, 'in coda…'); setRowProgress(li,5);
+
+        try{
+          const isText=(ext==='txt'||ext==='md');
+          const isDocx=(ext==='docx');
+          const isPdf =(ext==='pdf');
+          const isAudio=(['mp3','m4a','wav','ogg'].includes(ext));
+          const isVideo=(['mp4','mov','mkv','webm'].includes(ext));
+
+          if (isText){
+            setRowStatus(li,'lettura locale…'); setRowProgress(li,25);
+            const t=await file.text();
+            setPreviewHTML('<pre style="white-space:pre-wrap;">'+escapeHTML(t)+'</pre>');
+            appendToNotes('Testo locale: '+name, t);
+            setRowStatus(li,'anteprima pronta'); setRowProgress(li,100); continue;
+          }
+
+          if (isDocx){
+            setRowStatus(li,'conversione .docx…'); setRowProgress(li,25);
+            const ab=await file.arrayBuffer();
+            const res=await window.mammoth.convertToHtml({arrayBuffer:ab},{styleMap:["p[style-name='Title'] => h1:fresh","p[style-name='Heading 1'] => h2:fresh","p[style-name='Heading 2'] => h3:fresh"]});
+            const html=(res&&res.value)||"";
+            setPreviewHTML(html||'<p>(Documento vuoto)</p>');
+            const tmp=document.createElement('div'); tmp.innerHTML=html;
+            appendToNotes('Estratto (locale): '+name, (tmp.textContent||tmp.innerText||'').trim());
+            setRowStatus(li,'anteprima pronta'); setRowProgress(li,100); continue;
+          }
+
+          if (isPdf){
+            setRowStatus(li,'anteprima PDF…'); setRowProgress(li,25);
+            const lib=window.pdfjsLib; if (!lib) throw new Error('PDF.js non inizializzato');
+            const ab=await file.arrayBuffer();
+            const pdf=await lib.getDocument({data:ab}).promise;
+            const page=await pdf.getPage(1);
+            const viewport=page.getViewport({scale:1.2});
+            const canvas=document.createElement('canvas'), ctx=canvas.getContext('2d');
+            canvas.height=viewport.height; canvas.width=viewport.width;
+            await page.render({canvasContext:ctx, viewport}).promise;
+            setPreviewHTML(''); previewEl.appendChild(canvas);
+
+            setRowStatus(li,'estrazione testo…'); setRowProgress(li,50);
+            let text='';
+            try{
+              const dataURL=arrayBufferToDataURL(ab,'application/pdf');
+              const r=await fetch('/api/extract',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dataURL, fileName:name})});
+              const j=await r.json().catch(()=>({})); if(!r.ok) throw new Error(j&&j.message||'Errore estrazione');
+              text=j&&j.text||'';
+            }catch(_){ }
+            if (!text || !String(text).trim()){
+              setRowStatus(li,'estrazione locale…');
+              text=await extractPdfTextLocal(ab,8);
+            }
+            appendToNotes('Estratto: '+name, text||'(nessun testo)');
+            setRowStatus(li,'estratto'); setRowProgress(li,100); continue;
+          }
+
+          if (isAudio){
+            setRowStatus(li,'upload audio…'); setRowProgress(li,40);
+            const blobUrl = await uploadViaApi(file);
+            setRowStatus(li,'trascrizione audio…'); setRowProgress(li,70);
+            const text = await transcribeWithUrl(blobUrl);
+            appendToNotes('Trascrizione audio: '+name, text);
+            setRowStatus(li,'trascritto'); setRowProgress(li,100); continue;
+          }
+
+          if (isVideo){
+            setRowStatus(li,'anteprima video…'); setRowProgress(li,25);
+            const url=URL.createObjectURL(file);
+            setPreviewHTML('');
+            const vid=document.createElement('video'); vid.controls=true; vid.src=url; vid.className="w-full max-h-80 rounded-lg"; previewEl.appendChild(vid);
+
+            setRowStatus(li,'upload video…'); setRowProgress(li,50);
+            const blobUrl = await uploadViaApi(file);
+
+            setRowStatus(li,'trascrizione video…'); setRowProgress(li,80);
+            const text=await transcribeWithUrl(blobUrl);
+            appendToNotes('Trascrizione video: '+name, text);
+            setRowStatus(li,'trascritto'); setRowProgress(li,100); continue;
+          }
+
+          setRowStatus(li,'formato non supportato', true); setRowProgress(li,0);
+        }catch(e){
+          console.error(e);
+          setRowStatus(li,(e&&e.message)||'errore', true);
+          showToast(name+': '+((e&&e.message)||'Errore'), 'err');
+        }
+      }
+      $('#uploader').value='';
+    }
+
+    /* ======= Genera verbale ======= */
+    async function generateMinutes(){
+      const notes = ($('#notes').value||'').trim();
+      if (!notes){ showToast('Inserisci o carica degli appunti prima.','err'); return; }
+      const r = await fetch('/api/format',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({notes})});
+      const j = await r.json().catch(()=>({})); if(!r.ok) throw new Error((j&&j.message)||'Errore formattazione');
+      $('#result').textContent=(j&&j.verbale)||'(vuoto)';
+      showToast('Verbale formattato');
+    }
+
+    /* ======= Helpers pulsanti ======= */
+    function withLoading(btn, fn){
+      btn.classList.add('is-loading','is-active'); btn.disabled=true;
+      return Promise.resolve().then(fn).catch(err=>showToast(err?.message||'Errore','err')).finally(()=>{
+        btn.classList.remove('is-loading'); setTimeout(()=>btn.classList.remove('is-active'),300); btn.disabled=false;
+      });
+    }
+    function flashActive(btn, fn){
+      btn.classList.add('is-active'); try{ fn(); } finally{ setTimeout(()=>btn.classList.remove('is-active'),250); }
+    }
+
+    /* ======= Eventi UI ======= */
+    $('#dropArea').addEventListener('click', ()=> $('#uploader').click());
+    $('#uploader').addEventListener('change', e=>{
+      const files = Array.from(e.target.files||[]); if (files.length) handleFiles(files);
+    });
+    $('#btnClearPreview').addEventListener('click', ()=> setPreviewHTML(''));
+
+    const btnClean=$('#btnClean'), btnMinutesAI=$('#btnMinutesAI'), btnTranscribe=$('#btnTranscribe'), btnGenerate=$('#btnGenerate'), btnReset=$('#btnReset');
+
+    btnClean     .addEventListener('click', ()=> withLoading(btnClean,     ()=>runNotesAction('cleanup')));
+    btnMinutesAI .addEventListener('click', ()=> withLoading(btnMinutesAI, ()=>runNotesAction('minutes')));
+    btnTranscribe.addEventListener('click', ()=> withLoading(btnTranscribe,()=>runNotesAction('transcript')));
+    btnGenerate  .addEventListener('click', ()=> withLoading(btnGenerate,  generateMinutes));
+    btnReset     .addEventListener('click', ()=> withLoading(btnReset, ()=>{
+      $('#notes').value=''; $('#result').textContent='Il verbale comparirà qui…';
+      setPreviewHTML(''); clearQueue(); localStorage.setItem('memoai_notes_v2','');
+      $('#summaryBox').textContent='—'; $('#highlightsBox').textContent='—'; $('#todoBox').textContent='—'; $('#tagsBox').textContent='—';
+      showToast('Reset completato');
+    }));
+
+    // Analisi intelligente (client-side)
+    const bSum=$('#btnSummarize'), bHig=$('#btnHighlights'), bTodo=$('#btnTodos'), bTags=$('#btnSuggestTags');
+
+    bSum.addEventListener('click', ()=> flashActive(bSum, ()=>{
+      const src = ($('#notes').value||'').trim(); if(!src){ showToast('Inserisci testo negli Appunti','err'); return; }
+      const out = summarizeText(src,5); $('#summaryBox').textContent = out || '—';
+    }));
+    bHig.addEventListener('click', ()=> flashActive(bHig, ()=>{
+      const src = ($('#notes').value||'').trim(); if(!src){ showToast('Inserisci testo negli Appunti','err'); return; }
+      const h = extractHighlights(src); let txt="";
+      if (h.decisions?.length) txt += "Decisioni:\n- " + h.decisions.join("\n- ") + "\n\n";
+      if (h.deadlines?.length) txt += "Scadenze:\n- " + h.deadlines.join("\n- ") + "\n\n";
+      if (h.owners?.length)    txt += "Responsabili:\n- " + h.owners.join("\n- ");
+      $('#highlightsBox').textContent = txt.trim() || "—";
+    }));
+    bTodo.addEventListener('click', ()=> flashActive(bTodo, ()=>{
+      const src = ($('#notes').value||'').trim(); if(!src){ showToast('Inserisci testo negli Appunti','err'); return; }
+      const items = extractActions(src); renderTodos($('#todoBox'), items);
+    }));
+    bTags.addEventListener('click', ()=> flashActive(bTags, ()=>{
+      const src = ($('#notes').value||'').trim(); if(!src){ showToast('Inserisci testo negli Appunti','err'); return; }
+      const tags = (function(lc){
+        const TAGS={Bilancio:["bilancio","consuntivo","preventivo","spese","budget","quote","riparto"],Lavori:["lavori","manutenzione","appalto","impresa","cantiere","capitolato"],Convocazione:["convocazione","ordine del giorno","odg","assemblea","verbale"],Fornitori:["fornitore","fornitori","preventivo","offerta","contratto","fattura"],Sicurezza:["sicurezza","incendio","impianto","adeguamento","certificazione"],Pagamenti:["pagare","pagamento","mav","bonifico","morosità","sollecito"]};
+        const out=[]; for (const tag in TAGS){ for (const k of TAGS[tag]) if (lc.includes(k)){ out.push(tag); break; } }
+        return out.length?out:["Generale"];
+      })(((( '#notes' && $('#notes').value) || '')+"").toLowerCase());
+      renderList($('#tagsBox'), tags, "# ");
+    }));
+
+    $('#btnCopy').addEventListener('click', async ()=>{
+      const t=$('#result').textContent; if (!t || t.indexOf('Il verbale')===0){ showToast('Niente da copiare','err'); return; }
+      try{ await navigator.clipboard.writeText(t); showToast('Verbale copiato'); } catch(_){ showToast('Impossibile copiare','err'); }
+    });
+    $('#btnDownload').addEventListener('click', ()=>{
+      const t=$('#result').textContent; if (!t || t.indexOf('Il verbale')===0){ showToast('Niente da scaricare','err'); return; }
+      const blob=new Blob([t],{type:'text/markdown;charset=utf-8'});
+      const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+      a.download='verbale_'+new Date().toISOString().split('T')[0]+'.md'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+      showToast('Download avviato');
+    });
+
+    /* ======= Drag & Drop + Paste ======= */
+    (()=>{
+      const dropArea = $('#dropArea');
+      const uploader = $('#uploader');
+      const notes = $('#notes');
+
+      if (!dropArea || !uploader) return;
+
+      ['dragenter','dragover'].forEach(ev =>
+        dropArea.addEventListener(ev, e => { e.preventDefault(); dropArea.classList.add('is-dragover'); })
+      );
+      ['dragleave','drop'].forEach(ev =>
+        dropArea.addEventListener(ev, e => { e.preventDefault(); dropArea.classList.remove('is-dragover'); })
+      );
+
+      dropArea.addEventListener('drop', e => {
+        const files = [...(e.dataTransfer?.files||[])];
+        if (files.length) handleFiles(files);
+      });
+
+      document.addEventListener('paste', e => {
+        const items = [...(e.clipboardData?.items||[])];
+        const fileItem = items.find(i => i.kind === 'file');
+        if (fileItem) {
+          const f = fileItem.getAsFile();
+          if (f) handleFiles([f]);
+          return;
+        }
+        const text = e.clipboardData?.getData('text/plain');
+        if (text && !document.activeElement.matches('textarea,input')) {
+          notes.value = (notes.value ? notes.value + '\n' : '') + text;
+          notes.dispatchEvent(new Event('input'));
+          showToast('Testo incollato');
+        }
+      });
+    })();
+
+    /* Avvio */
+    health();
+  </script>
+</body>
+</html>
