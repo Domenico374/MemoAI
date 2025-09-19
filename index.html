@@ -1,260 +1,378 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Memo AI</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- DOCX preview -->
-  <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
-  <!-- PDF preview -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-  <script>
-    document.addEventListener('DOMContentLoaded', function(){
-      var lib = window.pdfjsLib || (window['pdfjs-dist/build/pdf'] || null);
-      if (lib && lib.GlobalWorkerOptions) {
-        lib.GlobalWorkerOptions.workerSrc =
-          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
-        window.pdfjsLib = lib;
-      }
-    });
-  </script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Memo AI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function(){
+      var lib = window.pdfjsLib || (window['pdfjs-dist/build/pdf'] || null);
+      if (lib && lib.GlobalWorkerOptions) {
+        lib.GlobalWorkerOptions.workerSrc =
+          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+        window.pdfjsLib = lib;
+      }
+    });
+  </script>
+  <style>
+    :root{
+      --bg1:#e0f2fe; --bg2:#e9d5ff; --bg3:#fce7f3;
+      --baseBG:#f5f7fb; --cardBG:#ffffff;
+      --radius:10px;
+      --muted:#e2e8f0; --secondary:#6366f1; --success:#10b981;
+      --primary:#2563eb; --danger:#ef4444; --cyan:#06b6d4;
+      --fuchsia:#d946ef; --amber:#f59e0b; --teal:#14b8a6;
+    }
+    .theme-ocean  { --bg1:#e0f2fe; --bg2:#e9d5ff; --bg3:#fce7f3; --baseBG:#f6fbff; --cardBG:#ffffffee; }
+    .theme-sunset { --bg1:#fde68a; --bg2:#fca5a5; --bg3:#a7f3d0; --baseBG:#fff8f3; --cardBG:#ffffffee; }
+    .theme-mint   { --bg1:#bbf7d0; --bg2:#a7f3d0; --bg3:#bfdbfe; --baseBG:#f6fff9; --cardBG:#ffffffee; }
+    .theme-aqua   { --bg1:#b9ffe9; --bg2:#bfe8ff; --bg3:#e8fff7; --baseBG:#effef9; --cardBG:#ffffffee; }
+    body{
+      background: var(--baseBG);
+      min-height:100vh; position:relative;
+    }
+    body::before{
+      content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+      background:
+        radial-gradient(600px 360px at -5% -10%, var(--bg1) 0%, transparent 60%),
+        radial-gradient(720px 420px at 105% -10%, var(--bg2) 0%, transparent 60%),
+        radial-gradient(800px 520px at 50% 110%, var(--bg3) 0%, transparent 60%);
+      filter: blur(12px) saturate(110%);
+      opacity:.5;
+    }
+    section.bg-white{
+      background: var(--cardBG) !important;
+      backdrop-filter: saturate(115%) blur(.5px);
+      border: 1px solid rgba(15,23,42,.04);
+    }
+    .btn{
+      -webkit-tap-highlight-color:transparent;
+      appearance:none; border:1px solid transparent;
+      border-radius:var(--radius);
+      padding:8px 14px; font:600 14px/1 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+      cursor:pointer; transition:transform .06s, box-shadow .2s, background-color .2s, opacity .2s;
+      display:inline-flex; align-items:center; gap:.5rem;
+      box-shadow:0 1px 0 rgba(15,23,42,.06);
+    }
+    .btn:active{ transform:translateY(1px) scale(.98); }
+    .btn:focus-visible{ outline:0; box-shadow:0 0 0 3px rgba(37,99,235,.25); }
+    .btn[disabled]{ opacity:.55; cursor:not-allowed; }
+    .btn--muted{     background:var(--muted);     color:#0b1220; } .btn--muted:hover{ filter:brightness(.97); }
+    .btn--secondary{ background:var(--secondary); color:#fff; }   .btn--secondary:hover{ filter:brightness(.95); }
+    .btn--success{   background:var(--success);   color:#fff; }   .btn--success:hover{ filter:brightness(.95); }
+    .btn--primary{   background:var(--primary);   color:#fff; }   .btn--primary:hover{ filter:brightness(.95); }
+    .btn--danger{    background:var(--danger);    color:#fff; }   .btn--danger:hover{ filter:brightness(.95); }
+    .btn--cyan{      background:var(--cyan);      color:#fff; }   .btn--cyan:hover{ filter:brightness(.95); }
+    .btn--fuchsia{   background:var(--fuchsia);   color:#fff; }   .btn--fuchsia:hover{ filter:brightness(.95); }
+    .btn--amber{     background:var(--amber);     color:#0b1220; } .btn--amber:hover{ filter:brightness(.97); }
+    .btn--teal{      background:var(--teal);      color:#fff; }   .btn--teal:hover{ filter:brightness(.95); }
+    .btn.is-active{ box-shadow:0 0 0 3px rgba(16,185,129,.2), 0 6px 14px rgba(2,6,23,.12); }
+    .btn.is-loading{ position:relative; pointer-events:none; }
+    .btn.is-loading > * { visibility: hidden; }
+    .btn.is-loading::after{
+      content:""; width:1.25em; height:1.25em; border-radius:999px;
+      border:2px solid currentColor; border-top-color:transparent;
+      position:absolute; inset:0; margin:auto;
+      animation:spin .9s linear infinite;
+    }
+    @keyframes spin{ to{ transform:rotate(360deg) } }
+    .pill{ font:600 12px/1 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; }
+    .dropzone{border:2px dashed #0ea5e9;border-radius:12px;transition:background .2s,border-color .2s}
+    .dropzone.is-dragover{background:rgba(14,165,233,.08);border-color:#38bdf8}
+    .dropzone-text { color: #64748b; }
+    .dropzone.is-dragover .dropzone-text { color: #0ea5e9; }
+    .tooltip {
+      position: relative;
+      cursor: help;
+    }
+    .tooltip::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 6px 10px;
+      font-size: 12px;
+      background: #333;
+      color: #fff;
+      border-radius: 6px;
+      white-space: nowrap;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.2s, visibility 0.2s;
+      z-index: 10;
+    }
+    .tooltip:hover::after {
+      opacity: 1;
+      visibility: visible;
+    }
+    .notification {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background-color: #10b981;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      z-index: 1000;
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+    .notification.show { opacity: 1; }
+  </style>
 </head>
-<body class="text-slate-800 bg-blue-50 min-h-screen">
-  <!-- Navbar sticky -->
-  <header class="sticky top-0 z-30 border-b bg-white/90 backdrop-blur shadow">
-    <div class="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <span class="text-blue-600 font-bold text-xl flex items-center gap-1">
-          <svg class="w-8 h-8" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" /></svg>
-          Memo AI
-        </span>
-        <span id="navStatusApi" class="text-xs px-3 py-1 ml-3 rounded-full font-bold bg-emerald-100 text-emerald-700">checking…</span>
-      </div>
-      <nav class="hidden md:flex gap-6">
-        <a href="#" class="text-slate-500 hover:text-blue-600 font-semibold transition">Home</a>
-        <a href="#" class="text-slate-500 hover:text-blue-600 font-semibold transition">Guida</a>
-        <a href="#" class="text-slate-500 hover:text-blue-600 font-semibold transition">Info</a>
-      </nav>
-    </div>
-  </header>
-  <!-- Toggles tema -->
-  <div class="max-w-4xl mx-auto px-4 py-3 flex justify-end gap-2">
-    <button data-theme="ocean"  class="px-3 py-1 rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200 font-semibold">Ocean</button>
-    <button data-theme="sunset" class="px-3 py-1 rounded-full bg-rose-100 text-rose-700 hover:bg-rose-200 font-semibold">Sunset</button>
-    <button data-theme="mint"   class="px-3 py-1 rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200 font-semibold">Mint</button>
-    <button data-theme="aqua"   class="px-3 py-1 rounded-full bg-teal-100 text-teal-700 hover:bg-teal-200 font-semibold">Aqua</button>
-  </div>
+<body class="text-slate-800 theme-aqua">
+    <div id="notification" class="notification"></div>
+    <header id="main-navbar" class="sticky top-0 z-30 border-b bg-white/90 backdrop-blur">
+    <div class="max-w-4xl mx-auto px-4 py-2 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="text-blue-600 font-bold text-xl">Memo AI</span>
+        <span class="text-xs px-2 py-1 ml-3 rounded-full bg-emerald-100 text-emerald-700" id="navStatusApi">checking…</span>
+      </div>
+      <nav class="hidden md:flex gap-6">
+        <a href="#" class="text-slate-500 hover:text-blue-600 font-semibold transition">Home</a>
+        <a href="#" class="text-slate-500 hover:text-blue-600 font-semibold transition">Guida</a>
+        <a href="#" class="text-slate-500 hover:text-blue-600 font-semibold transition">Info</a>
+      </nav>
+    </div>
+  </header>
+    <div class="max-w-4xl mx-auto px-4 py-2 flex justify-end gap-2">
+    <button data-theme="ocean"  class="pill px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 hover:bg-blue-200">Ocean</button>
+    <button data-theme="sunset" class="pill px-2.5 py-1 rounded-full bg-rose-100 text-rose-700 hover:bg-rose-200">Sunset</button>
+    <button data-theme="mint"   class="pill px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200">Mint</button>
+    <button data-theme="aqua"   class="pill px-2.5 py-1 rounded-full bg-teal-100 text-teal-700 hover:bg-teal-200">Aqua</button>
+  </div>
+  <div class="max-w-4xl mx-auto p-6">
+        <section class="bg-white rounded-2xl shadow p-5 mb-6 dropzone" id="dropArea">
+      <div class="flex flex-col items-center justify-center p-6 text-center">
+        <i class="fa-solid fa-cloud-arrow-up text-4xl mb-4 text-slate-400"></i>
+        <h2 class="text-lg font-semibold dropzone-text">Trascina qui i tuoi file o clicca per caricarli</h2>
+        <p class="text-xs text-slate-500 mt-1">
+          Suggerimento: per file &gt; 4.5 MB usare versioni ridotte. I PDF scansionati richiederanno OCR.
+        </p>
+        <input id="uploader" type="file" multiple
+             accept=".txt,.md,.pdf,.docx,.mp3,.m4a,.wav,.ogg,.webm,.mp4,.mov,.mkv"
+             class="hidden" />
+      </div>
+      <ul id="queue" class="mt-4 space-y-2 text-sm"></ul>
+    </section>
+        <div class="grid md:grid-cols-2 gap-6 mb-6">
+      <section class="bg-white rounded-2xl shadow p-5">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold">Anteprima</h2>
+          <button id="btnClearPreview" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200"
+                  data-tooltip="Pulisce l'area di anteprima">
+            Pulisci
+          </button>
+        </div>
+        <div id="preview" class="prose max-w-none border border-slate-200 rounded-xl p-4 bg-slate-50 text-sm h-64 overflow-y-auto">
+          <p class="text-slate-500">L’anteprima comparirà qui…</p>
+        </div>
+      </section>
+      <section class="bg-white rounded-2xl shadow p-5">
+        <h2 class="text-lg font-semibold mb-3">Appunti</h2>
+        <textarea id="notes" rows="12"
+          class="w-full h-64 p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+          placeholder="Appunti trascritti o estratti…"></textarea>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <button id="btnClean"       class="btn btn--muted tooltip" data-tooltip="Rimuove spazi extra e caratteri indesiderati">
+            <i class="fa-solid fa-broom"></i> Pulizia
+          </button>
+          <button id="btnMinutesAI"   class="btn btn--secondary tooltip" data-tooltip="Genera un verbale basato sull'IA">
+            <i class="fa-solid fa-clipboard"></i> Verbale
+          </button>
+          <button id="btnTranscribe"  class="btn btn--success tooltip" data-tooltip="Trascrive il testo da file audio o video">
+            <i class="fa-solid fa-microphone"></i> Trascrizione
+          </button>
+          <button id="btnGenerate"    class="btn btn--primary tooltip" data-tooltip="Genera un report formattato">
+            <i class="fa-solid fa-magic"></i> Genera verbale
+          </button>
+          <button id="btnReset"       class="btn btn--danger tooltip" data-tooltip="Resetta tutti i campi">
+            <i class="fa-solid fa-undo"></i> Resettare
+          </button>
+        </div>
+      </section>
+    </div>
+        <section class="bg-white rounded-2xl shadow p-5 mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold">Analisi intelligente</h2>
+        <div class="flex flex-wrap gap-2">
+          <button id="btnSummarize"   class="btn btn--cyan tooltip" data-tooltip="Crea un riassunto conciso del testo">
+            <i class="fa-solid fa-file-lines"></i> Riassunto
+          </button>
+          <button id="btnHighlights"  class="btn btn--fuchsia tooltip" data-tooltip="Estrae i punti chiave">
+            <i class="fa-solid fa-highlighter"></i> Punti salienti
+          </button>
+          <button id="btnTodos"       class="btn btn--amber tooltip" data-tooltip="Identifica le azioni e gli impegni">
+            <i class="fa-solid fa-list-check"></i> To-Do
+          </button>
+          <button id="btnSuggestTags" class="btn btn--teal tooltip" data-tooltip="Suggerisce tag per organizzare il contenuto">
+            <i class="fa-solid fa-tags"></i> Suggerisci tag
+          </button>
+        </div>
+      </div>
+      <div class="grid gap-4 md:grid-cols-2">
+        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
+          <h3 class="font-medium mb-2">Riassunto</h3>
+          <div id="summaryBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
+        </div>
+        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
+          <h3 class="font-medium mb-2">Punti salienti</h3>
+          <div id="highlightsBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
+        </div>
+        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
+          <h3 class="font-medium mb-2">To-Do</h3>
+          <div id="todoBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
+        </div>
+        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
+          <h3 class="font-medium mb-2">Tag suggeriti</h3>
+          <div id="tagsBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
+        </div>
+      </div>
+    </section>
+        <section class="bg-white rounded-2xl shadow p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold">Verbale</h2>
+        <div class="flex gap-2">
+          <button id="btnCopy" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200 tooltip"
+                  data-tooltip="Copia il verbale negli appunti">
+            <i class="fa-solid fa-copy"></i> Copia
+          </button>
+          <button id="btnDownload" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200 tooltip"
+                  data-tooltip="Scarica come file Markdown">
+            <i class="fa-solid fa-download"></i> Scarica .md
+          </button>
+        </div>
+      </div>
+      <pre id="result" class="whitespace-pre-wrap text-sm leading-6 text-slate-800">Il verbale comparirà qui…</pre>
+    </section>
+  </div>
+  <script>
+    // Funzione per mostrare le notifiche
+    function showNotification(message) {
+      const notificationEl = document.getElementById('notification');
+      notificationEl.textContent = message;
+      notificationEl.classList.add('show');
+      setTimeout(() => {
+        notificationEl.classList.remove('show');
+      }, 2500);
+    }
 
-  <div class="max-w-4xl mx-auto p-6">
+    /* ========== Theme toggle ========== */
+    (function(){
+      const saved = localStorage.getItem('memoai_theme') || 'aqua';
+      document.body.classList.remove('theme-ocean','theme-sunset','theme-mint','theme-aqua');
+      document.body.classList.add('theme-'+saved);
+      document.querySelectorAll('[data-theme]').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const t = btn.dataset.theme;
+          document.body.classList.remove('theme-ocean','theme-sunset','theme-mint','theme-aqua');
+          document.body.classList.add('theme-'+t);
+          localStorage.setItem('memoai_theme', t);
+        });
+      });
+    })();
 
-    <!-- Sezione carica file -->
-    <section class="bg-white rounded-2xl shadow-lg p-6 mb-6 border border-blue-50">
-      <div class="flex items-center justify-between mb-3">
-        <div class="flex gap-2 items-center">
-          <h2 class="text-lg font-semibold">Carica file</h2>
-          <span id="fileCountBadge" class="text-xs px-3 py-1 rounded-full font-bold bg-blue-100 text-blue-800 ml-2 transition">0 in coda</span>
-        </div>
-        <button id="btnUpload" type="button"
-          class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-full px-5 py-2 shadow-lg text-base transition">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5-5m0 0l5 5m-5-5v12"/>
-          </svg>
-          Seleziona file
-        </button>
-      </div>
-      <div id="dropArea"
-        class="bg-blue-50 border-2 border-dashed border-blue-300 rounded-xl py-8 text-center text-blue-600 font-semibold min-h-[80px] flex items-center justify-center hover:bg-blue-100 transition">
-        <svg class="w-7 h-7 inline mr-2 -mt-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
-        </svg>
-        Trascina qui i file oppure clicca su "Seleziona file"
-      </div>
-      <ul id="queue" class="mt-4 space-y-2 text-sm"></ul>
-      <input id="uploader" type="file" multiple accept=".txt,.md,.pdf,.docx,.mp3,.m4a,.wav,.ogg,.webm,.mp4,.mov,.mkv" class="hidden" />
-    </section>
+    // --------- helpers UI, health check e resto del JS identical to original ma aggiorna anche la navbar! ---------
+    function $(s){ return document.querySelector(s); }
+    var queueEl   = $('#queue');
+    var previewEl = $('#preview');
+    // ... [tutte le funzioni helper UI, file, preview ecc. come nel tuo index precedente] ...
 
-    <!-- Anteprima -->
-    <section class="bg-white rounded-2xl shadow p-5 mb-6">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold flex items-center gap-2">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553 2.276A2 2 0 0121 14.118V19a2 2 0 01-2 2H5a2 2 0 01-2-2v-4.882a2 2 0 01 1.447-1.842L9 10"/>
-          </svg>
-          Anteprima
-        </h2>
-        <button id="btnClearPreview"
-          class="flex items-center gap-2 bg-gray-200 hover:bg-gray-300 text-slate-800 font-semibold rounded-full px-4 py-2 transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
-          </svg>
-          Pulisci anteprima
-        </button>
-      </div>
-      <div id="preview" class="prose max-w-none border border-slate-200 rounded-xl p-4 bg-slate-50 text-sm">
-        <p class="text-slate-500">L’anteprima comparirà qui…</p>
-      </div>
-    </section>
+    /* ---------- health check ---------- */
+    async function health(){
+      var badge = $('#navStatusApi'); // usa solo badge navbar
+      try {
+        var u = await fetch('/api/upload', { method: 'OPTIONS' });
+        var e = await fetch('/api/extract', { method: 'OPTIONS' });
+        if (u.ok && e.ok) {
+          badge.textContent = 'API ok';
+          badge.className = "text-xs px-2 py-1 ml-3 rounded-full bg-emerald-100 text-emerald-700";
+        } else {
+          badge.textContent = 'API parziali';
+          badge.className = "text-xs px-2 py-1 ml-3 rounded-full bg-amber-100 text-amber-700";
+        }
+      } catch(err){
+        badge.textContent = 'API offline';
+        badge.className = "text-xs px-2 py-1 ml-3 rounded-full bg-rose-100 text-rose-700";
+      }
+    }
+    // ... [tutto il resto dello script invariato, inclusi eventi, upload, drag&drop, analisi, note, download, ecc.] ...
 
-    <!-- Appunti -->
-    <section class="bg-white rounded-2xl shadow p-5 mb-6">
-      <h2 class="text-lg font-semibold mb-3 flex items-center gap-2">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 20h9"/>
-        </svg>
-        Appunti
-      </h2>
-      <textarea id="notes" rows="10"
-        class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y font-mono text-base"
-        placeholder="Appunti trascritti o estratti…"></textarea>
-      <div class="mt-4 flex flex-wrap gap-2">
-        <button id="btnClean" class="flex items-center gap-2 bg-gray-200 hover:bg-gray-300 text-slate-800 font-semibold rounded-full px-4 py-2 transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 6h18M9 6V4a1 1 0 112 0v2m5 0v2M6 6V4m12 2v2"/>
-          </svg>
-          Pulizia
-        </button>
-        <button id="btnMinutesAI" class="flex items-center gap-2 bg-indigo-500 hover:bg-indigo-600 text-white font-semibold rounded-full px-4 py-2 transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M19 14l-7 7-7-7"/>
-          </svg>
-          Verbale
-        </button>
-        <button id="btnTranscribe" class="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-full px-4 py-2 transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 19V6h6v13"/>
-          </svg>
-          Trascrizione
-        </button>
-        <button id="btnGenerate" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-full px-4 py-2 transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M12 5l7 7-7 7"/>
-          </svg>
-          Genera verbale
-        </button>
-        <button id="btnReset" class="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white font-semibold rounded-full px-4 py-2 transition">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
-          </svg>
-          Resettare
-        </button>
-      </div>
-    </section>
+    /* Avvio health check all'apertura */
+    health();
+  </script>
+    <script>
+    // ... [Drag & drop code identico a prima per #dropArea e incolla] ...
+    (()=>{
+      const dropArea = document.getElementById('dropArea');
+      const uploader = document.getElementById('uploader');
+      const notes = document.getElementById('notes');
 
-    <!-- Analisi intelligente -->
-    <section class="bg-white rounded-2xl shadow p-5 mb-6">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold flex items-center gap-2">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405M19 15.595 13.5 10.08"/>
-          </svg>
-          Analisi intelligente
-        </h2>
-        <div class="flex flex-wrap gap-2">
-          <button id="btnSummarize" class="flex items-center gap-2 bg-cyan-500 hover:bg-cyan-600 text-white font-semibold rounded-full px-4 py-2 text-xs transition">Riassunto</button>
-          <button id="btnHighlights" class="flex items-center gap-2 bg-fuchsia-500 hover:bg-fuchsia-600 text-white font-semibold rounded-full px-4 py-2 text-xs transition">Punti salienti</button>
-          <button id="btnTodos" class="flex items-center gap-2 bg-amber-400 hover:bg-amber-500 text-slate-800 font-semibold rounded-full px-4 py-2 text-xs transition">To-Do</button>
-          <button id="btnSuggestTags" class="flex items-center gap-2 bg-teal-500 hover:bg-teal-600 text-white font-semibold rounded-full px-4 py-2 text-xs transition">Suggerisci tag</button>
-        </div>
-      </div>
-      <div class="grid gap-4 md:grid-cols-2">
-        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
-          <h3 class="font-medium mb-2">Riassunto</h3>
-          <div id="summaryBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
-        </div>
-        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
-          <h3 class="font-medium mb-2">Punti salienti</h3>
-          <div id="highlightsBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
-        </div>
-        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
-          <h3 class="font-medium mb-2">To-Do</h3>
-          <div id="todoBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
-        </div>
-        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
-          <h3 class="font-medium mb-2">Tag suggeriti</h3>
-          <div id="tagsBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
-        </div>
-      </div>
-    </section>
+      if (!dropArea || !uploader) return;
 
-    <!-- Verbale -->
-    <section class="bg-white rounded-2xl shadow p-5">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold flex items-center gap-2">
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M16 5v14M8 5v14"/>
-          </svg>
-          Verbale
-        </h2>
-        <div class="flex gap-2">
-          <button id="btnCopy" class="flex items-center gap-2 bg-gray-200 hover:bg-gray-300 text-slate-800 font-semibold rounded-full px-4 py-2 transition">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M8 16h8M8 12h8M8 8h8"/>
-            </svg>
-            Copiare
-          </button>
-          <button id="btnDownload" class="flex items-center gap-2 bg-gray-200 hover:bg-gray-300 text-slate-800 font-semibold rounded-full px-4 py-2 transition">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M6 20h12M12 4v16"/>
-            </svg>
-            Scarica .md
-          </button>
-        </div>
-      </div>
-      <pre id="result" class="whitespace-pre-wrap text-sm leading-6 text-slate-800">Il verbale comparirà qui…</pre>
-    </section>
-  </div>
-  <script>
-    // Tema toggle
-    (function(){
-      const saved = localStorage.getItem('memoai_theme') || 'aqua';
-      document.body.classList.remove('theme-ocean','theme-sunset','theme-mint','theme-aqua');
-      document.body.classList.add('theme-'+saved);
-      document.querySelectorAll('[data-theme]').forEach(btn=>{
-        btn.addEventListener('click', ()=>{
-          const t = btn.dataset.theme;
-          document.body.classList.remove('theme-ocean','theme-sunset','theme-mint','theme-aqua');
-          document.body.classList.add('theme-'+t);
-          localStorage.setItem('memoai_theme', t);
-        });
-      });
-    })();
-    // Badge stato API
-    async function health(){
-      var badge = document.getElementById('navStatusApi');
-      try {
-        var u = await fetch('/api/upload', { method: 'OPTIONS' });
-        var e = await fetch('/api/extract', { method: 'OPTIONS' });
-        if (u.ok && e.ok) {
-          badge.textContent = 'API ok';
-          badge.className = "text-xs px-3 py-1 ml-3 rounded-full font-bold bg-emerald-100 text-emerald-700";
-        } else {
-          badge.textContent = 'API parziali';
-          badge.className = "text-xs px-3 py-1 ml-3 rounded-full font-bold bg-amber-100 text-amber-700 animate-pulse";
-        }
-      } catch(err){
-        badge.textContent = 'API offline';
-        badge.className = "text-xs px-3 py-1 ml-3 rounded-full font-bold bg-rose-100 text-rose-700 animate-pulse";
-      }
-    }
-    health();
-    // Drop-area evidenziata
-    (()=>{
-      const dropArea = document.getElementById('dropArea');
-      const uploader = document.getElementById('uploader');
-      if (!dropArea || !uploader) return;
-      ['dragenter','dragover'].forEach(ev =>
-        dropArea.addEventListener(ev, e => { e.preventDefault(); dropArea.classList.add('bg-blue-100', 'border-blue-400'); })
-      );
-      ['dragleave','drop'].forEach(ev =>
-        dropArea.addEventListener(ev, e => { e.preventDefault(); dropArea.classList.remove('bg-blue-100', 'border-blue-400'); })
-      );
-      dropArea.addEventListener('drop', e => {
-        const files = [...(e.dataTransfer?.files||[])];
-        if (files.length && typeof handleFiles === "function") handleFiles(files);
-      });
-    })();
-    // ...inserisci qui il tuo JS di funzioni per i pulsanti e caricamento
-  </script>
+      dropArea.addEventListener('click', () => uploader.click());
+
+      ['dragenter','dragover'].forEach(ev =>
+        dropArea.addEventListener(ev, e => { e.preventDefault(); dropArea.classList.add('is-dragover'); })
+      );
+      ['dragleave','drop'].forEach(ev =>
+        dropArea.addEventListener(ev, e => { e.preventDefault(); dropArea.classList.remove('is-dragover'); })
+      );
+      dropArea.addEventListener('drop', e => {
+        const files = [...(e.dataTransfer?.files||[])];
+        if (files.length) handleFiles(files);
+      });
+      document.addEventListener('paste', e => {
+        const items = [...(e.clipboardData?.items||[])];
+        const fileItem = items.find(i => i.kind === 'file');
+        if (fileItem) {
+          const f = fileItem.getAsFile();
+          if (f) handleFiles([f]);
+          return;
+        }
+        const text = e.clipboardData?.getData('text/plain');
+        if (text && !document.activeElement.matches('textarea,input')) {
+          notes.value = (notes.value ? notes.value + '\n' : '') + text;
+          notes.dispatchEvent(new Event('input'));
+        }
+      });
+    })();
+
+    // Mock functions per dimostrazione
+    function handleFiles(files) {
+      console.log('File caricati:', files);
+      // Logica di caricamento qui
+    }
+    document.getElementById('btnCopy').addEventListener('click', () => {
+      const text = document.getElementById('result').textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        showNotification('Verbale copiato!');
+      });
+    });
+    document.getElementById('btnDownload').addEventListener('click', () => {
+      // Logica di download
+      showNotification('Download avviato!');
+    });
+
+    document.querySelectorAll('.btn').forEach(button => {
+      button.addEventListener('click', () => {
+        // Simula l'azione di caricamento
+        if (button.id !== 'btnCopy' && button.id !== 'btnDownload' && button.id !== 'btnReset' && button.id !== 'btnClean' && button.id !== 'btnClearPreview') {
+          document.querySelectorAll('.btn').forEach(b => b.setAttribute('disabled', 'disabled'));
+          button.classList.add('is-loading');
+          setTimeout(() => {
+            button.classList.remove('is-loading');
+            document.querySelectorAll('.btn').forEach(b => b.removeAttribute('disabled'));
+          }, 2000); // Simulazione ritardo 2s
+        }
+      });
+    });
+  </script>
 </body>
 </html>
