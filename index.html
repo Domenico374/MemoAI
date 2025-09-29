@@ -4,237 +4,686 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Memo AI</title>
-
-  <!-- Tailwind + Icons -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
-
-  <!-- DOCX preview -->
+  <!-- DOCX preview (client-side) -->
   <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
-
-  <!-- PDF preview -->
+  <!-- PDF preview (render first page) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script>
+    // Configura PDF.js (worker) quando il DOM è pronto, con controlli di esistenza
     document.addEventListener('DOMContentLoaded', function(){
       var lib = window.pdfjsLib || (window['pdfjs-dist/build/pdf'] || null);
       if (lib && lib.GlobalWorkerOptions) {
         lib.GlobalWorkerOptions.workerSrc =
           'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
-        window.pdfjsLib = lib;
+        window.pdfjsLib = lib; // assicura alias globale
       }
     });
   </script>
-
   <style>
-    .notification{
-      position: fixed; left:50%; transform:translateX(-50%);
-      bottom: 16px; padding:10px 14px; border-radius:10px;
-      background:#0ea5e9; color:#fff; z-index:50; opacity:0; transition:.25s;
-      box-shadow:0 10px 30px rgba(2,6,23,.15);
-    }
-    .notification.is-danger{ background:#ef4444; }
-    .notification.is-warning{ background:#f59e0b; }
-    .notification.is-info{ background:#06b6d4; }
-
-    .drop-zone.is-dragover {
-      background: #dbeafe;
-      border-color: #3b82f6;
-    }
-
-    #fullscreenOverlay {
-      display: none;
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0,0,0,0.95);
-      z-index: 9999;
-      overflow: auto;
-    }
-    #fullscreenOverlay.active {
-      display: block;
-    }
-    #fullscreenContent {
-      padding: 2rem;
-      max-width: 1200px;
-      margin: 0 auto;
-    }
+    body { background:#f5f7fb }
+    .prose :where(h1,h2,h3){margin:.25rem 0 .5rem}
   </style>
 </head>
-
-<body class="bg-slate-50 text-slate-800">
-  <!-- Toast -->
-  <div id="toast" class="notification"></div>
-
-  <!-- Fullscreen Overlay -->
-  <div id="fullscreenOverlay">
-    <div class="sticky top-0 bg-black/50 p-4 flex justify-end">
-      <button onclick="closeFullscreen()" class="px-4 py-2 bg-white rounded text-slate-900 hover:bg-slate-100">
-        <i class="fa-solid fa-times mr-2"></i>Chiudi
-      </button>
-    </div>
-    <div id="fullscreenContent"></div>
-  </div>
-
-  <!-- NAVBAR -->
-  <header class="sticky top-0 z-30 border-b bg-white/90 backdrop-blur">
-    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-bold">M</span>
-        <span class="font-semibold text-lg">Memo AI</span>
-        <span id="navStatusApi" class="ml-3 text-xs px-2 py-1 rounded-full bg-slate-200 text-slate-700">checking…</span>
+<body class="text-slate-800">
+  <div class="max-w-4xl mx-auto p-6">
+    <!-- Header -->
+    <header class="mb-6 flex items-center justify-between gap-3">
+      <div>
+        <h1 class="text-3xl font-bold">Memo AI</h1>
+        <p class="text-sm text-slate-600">Upload file → Trascrizione / Estrazione → Formattazione</p>
       </div>
-      <div class="flex items-center gap-4">
-        <div class="hidden md:flex items-center gap-4 text-xs text-slate-500">
-          <span>File: <strong id="fileCount">0</strong></span>
-          <span>Coda: <strong id="queueCount">0</strong></span>
-          <span id="saveStatus" class="text-emerald-600"></span>
+      <span id="healthBadge" class="text-xs px-2.5 py-1 rounded-full bg-slate-200 text-slate-700">checking…</span>
+    </header>
+
+    <!-- Upload -->
+    <section class="bg-white rounded-2xl shadow p-5 mb-6">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-semibold">Carica file</h2>
+          <p class="text-xs text-slate-500 mt-1">
+            Suggerimento: per file &gt; 4.5 MB usare versioni ridotte. I PDF scansionati richiederanno OCR.
+          </p>
         </div>
-        <nav class="flex items-center gap-4 text-sm">
-          <a class="text-slate-500 hover:text-blue-600" href="#">Guida</a>
-        </nav>
+        <button id="btnUpload" type="button"
+          class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Seleziona file</button>
       </div>
-    </div>
-  </header>
 
-  <main class="max-w-6xl mx-auto p-4 md:p-6">
-    <!-- Upload con Drag & Drop -->
-    <section class="bg-white border rounded-xl p-4 md:p-5 shadow-sm">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="font-semibold">Carica file</h2>
-        <div class="flex items-center gap-2">
-          <button id="btnUpload" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            <i class="fa-solid fa-file-arrow-up mr-2"></i>Seleziona
-          </button>
-          <button id="btnClearQueue" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            Pulisci coda
-          </button>
-        </div>
-      </div>
-      
-      <div id="dropArea" class="drop-zone border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:bg-slate-50 transition">
-        <div id="dropZone">
-          <i class="fa-solid fa-cloud-arrow-up text-4xl text-slate-400 mb-2"></i>
-          <p class="text-sm text-slate-600">Trascina i file qui o clicca per selezionare</p>
-          <p class="text-xs text-slate-400 mt-1">PDF, DOCX, TXT, MD, Immagini, Audio, Video</p>
-        </div>
-      </div>
-      
-      <input id="uploader" type="file" class="hidden" multiple accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp,.svg,.mp3,.m4a,.wav,.ogg,.flac,.mp4,.webm,.mov" />
-      
-      <!-- Coda file -->
-      <div class="mt-4">
-        <h3 class="text-sm font-semibold text-slate-600 mb-2">Coda elaborazione</h3>
-        <ul id="queue" class="space-y-2"></ul>
-      </div>
+      <ul id="queue" class="mt-4 space-y-2 text-sm"></ul>
+
+      <input id="uploader" type="file" multiple
+             accept=".txt,.md,.pdf,.docx,.mp3,.m4a,.wav,.ogg,.webm"
+             class="hidden" />
     </section>
 
     <!-- Anteprima -->
-    <section class="bg-white border rounded-xl p-4 md:p-5 shadow-sm mt-4">
-      <div class="flex items-center justify-between">
-        <h2 class="font-semibold">Anteprima</h2>
-        <div class="flex items-center gap-2">
-          <button id="btnFullscreen" class="hidden md:inline px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            <i class="fa-solid fa-expand mr-1"></i>Schermo intero
-          </button>
-          <button id="btnClearPreview" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            Pulisci
-          </button>
-        </div>
+    <section class="bg-white rounded-2xl shadow p-5 mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold">Anteprima</h2>
+        <button id="btnClearPreview" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Pulisci anteprima</button>
       </div>
-      <div id="preview" class="mt-3 min-h-[120px] grid place-items-center rounded-lg bg-slate-100/60 border border-dashed">
-        <p class="text-sm text-slate-400">L'anteprima comparirà qui…</p>
+      <div id="preview"
+           class="prose max-w-none border border-slate-200 rounded-xl p-4 bg-slate-50 text-sm">
+        <p class="text-slate-500">L’anteprima comparirà qui…</p>
       </div>
     </section>
 
     <!-- Appunti -->
-    <section class="bg-white border rounded-xl p-4 md:p-5 shadow-sm mt-4">
-      <div class="flex items-center justify-between">
-        <h2 class="font-semibold">Appunti</h2>
-        <div class="flex items-center gap-2">
-          <span id="charCount" class="text-xs text-slate-500">0 caratteri</span>
-          <button id="btnTranscribe" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            <i class="fa-solid fa-microphone mr-1"></i>Trascrivi
-          </button>
-          <button id="btnClean" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            Pulisci testo
-          </button>
-          <button id="btnReset" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            Reset
-          </button>
-        </div>
+    <section class="bg-white rounded-2xl shadow p-5 mb-6">
+      <h2 class="text-lg font-semibold mb-3">Appunti</h2>
+      <textarea id="notes" rows="12"
+        class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+        placeholder="Appunti trascritti o estratti…"></textarea>
+
+      <div class="mt-4 flex flex-wrap gap-2">
+        <!-- Pulsanti rapidi -->
+        <button id="btnClean"
+          class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Pulizia</button>
+        <button id="btnMinutesAI"
+          class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Verbale</button>
+        <button id="btnTranscribe"
+          class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Trascrizione</button>
+
+        <!-- Storico -->
+        <button id="btnGenerate"
+          class="px-3 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700">
+          Genera verbale
+        </button>
+        <button id="btnReset"
+          class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">
+          Resettare
+        </button>
       </div>
-      <textarea id="notes" class="mt-3 w-full h-56 md:h-64 p-3 rounded-lg border outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-mono text-sm"
-        placeholder="Scrivi o incolla i tuoi appunti qui, oppure carica un file sopra…"></textarea>
     </section>
 
     <!-- Analisi intelligente -->
-    <section class="bg-white border rounded-xl p-4 md:p-5 shadow-sm mt-4">
+    <section class="bg-white rounded-2xl shadow p-5 mb-6">
       <div class="flex items-center justify-between mb-3">
-        <h2 class="font-semibold">Analisi intelligente</h2>
+        <h2 class="text-lg font-semibold">Analisi intelligente</h2>
         <div class="flex flex-wrap gap-2">
-          <button id="btnSummarize" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            Riassunto
-          </button>
-          <button id="btnHighlights" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            Punti salienti
-          </button>
-          <button id="btnTodos" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            To-Do
-          </button>
-          <button id="btnSuggestTags" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            Tag
-          </button>
+          <button id="btnSummarize"   class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Riassunto</button>
+          <button id="btnHighlights"  class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Punti salienti</button>
+          <button id="btnTodos"       class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">To-Do</button>
+          <button id="btnSuggestTags" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Suggerisci tag</button>
         </div>
       </div>
 
-      <div class="grid md:grid-cols-2 gap-4">
-        <div class="p-3 rounded-lg border bg-slate-50">
-          <div class="text-xs font-semibold text-slate-500 mb-2">Riassunto</div>
-          <pre id="summaryBox" class="text-sm whitespace-pre-wrap text-slate-700">—</pre>
+      <div class="grid gap-4 md:grid-cols-2">
+        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
+          <h3 class="font-medium mb-2">Riassunto</h3>
+          <div id="summaryBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
         </div>
-        <div class="p-3 rounded-lg border bg-slate-50">
-          <div class="text-xs font-semibold text-slate-500 mb-2">Punti salienti</div>
-          <pre id="highlightsBox" class="text-sm whitespace-pre-wrap text-slate-700">—</pre>
+        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
+          <h3 class="font-medium mb-2">Punti salienti</h3>
+          <div id="highlightsBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
         </div>
-        <div class="p-3 rounded-lg border bg-slate-50">
-          <div class="text-xs font-semibold text-slate-500 mb-2">Attività da fare</div>
-          <pre id="todoBox" class="text-sm whitespace-pre-wrap text-slate-700">—</pre>
+        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
+          <h3 class="font-medium mb-2">To-Do</h3>
+          <div id="todoBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
         </div>
-        <div class="p-3 rounded-lg border bg-slate-50">
-          <div class="text-xs font-semibold text-slate-500 mb-2">Tag suggeriti</div>
-          <div id="tagsBox" class="text-sm text-slate-700">—</div>
+        <div class="border border-slate-200 rounded-xl p-3 bg-slate-50">
+          <h3 class="font-medium mb-2">Tag suggeriti</h3>
+          <div id="tagsBox" class="text-sm text-slate-800 whitespace-pre-wrap">—</div>
         </div>
       </div>
     </section>
 
     <!-- Verbale -->
-    <section class="bg-white border rounded-xl p-4 md:p-5 shadow-sm mt-4">
+    <section class="bg-white rounded-2xl shadow p-5">
       <div class="flex items-center justify-between mb-3">
-        <h2 class="font-semibold">Verbale</h2>
-        <div class="flex flex-wrap items-center gap-2">
-          <button id="btnGenerate" class="px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-sm">
-            <i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Genera
-          </button>
-          <button id="btnMinutesAI" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            AI Verbale
-          </button>
-          <button id="btnCopy" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            Copia
-          </button>
-          <button id="btnDownload" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            .md
-          </button>
-          <button id="btnExportPDF" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            PDF
-          </button>
+        <h2 class="text-lg font-semibold">Verbale</h2>
+        <div class="flex gap-2">
+          <button id="btnCopy" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Copiare</button>
+          <button id="btnDownload" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Scarica .md</button>
         </div>
       </div>
-      <pre id="result" class="bg-slate-900 text-slate-100 p-4 rounded-lg overflow-auto min-h-[200px] whitespace-pre-wrap text-sm font-mono">Il verbale comparirà qui…</pre>
+      <pre id="result" class="whitespace-pre-wrap text-sm leading-6 text-slate-800">Il verbale comparirà qui…</pre>
     </section>
-  </main>
+  </div>
 
-  <script src="app.js"></script>
+  <script>
+    /* ---------- helpers UI ---------- */
+    function $(s){ return document.querySelector(s); }
+    var queueEl   = $('#queue');
+    var previewEl = $('#preview');
+
+    function addQueueRow(name, meta, status) {
+      var li = document.createElement('li');
+      li.className = "border rounded-lg px-3 py-2 flex items-center justify-between";
+      li.dataset.name = name;
+      li.innerHTML =
+        '<div>' +
+          '<div class="font-medium">'+ name +'</div>' +
+          '<div class="text-slate-500 text-xs">'+ meta +' · <span class="status">'+ status +'</span></div>' +
+        '</div>';
+      queueEl.appendChild(li);
+      return li;
+    }
+    function setRowStatus(li, status, danger){
+      var s = li.querySelector('.status');
+      s.textContent = status;
+      s.className = "status " + (danger ? "text-red-500" : "text-slate-500");
+    }
+    function clearQueue(){ queueEl.innerHTML = ''; }
+
+    function appendToNotes(header, text){
+      var ta = $('#notes');
+      var section = (header ? "["+header+"]\n" : "") + (text || "");
+      ta.value = (ta.value ? ta.value + "\n---\n" : "") + section;
+    }
+    function setPreviewHTML(html){
+      previewEl.innerHTML = html || '<p class="text-slate-500">L’anteprima comparirà qui…</p>';
+    }
+    function escapeHTML(s){
+      s = String(s || "");
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+    function arrayBufferToDataURL(ab, mime){
+      mime = mime || 'application/pdf';
+      var bytes = new Uint8Array(ab);
+      var bin = '';
+      for (var i=0;i<bytes.length;i++) bin += String.fromCharCode(bytes[i]);
+      var b64 = btoa(bin);
+      return 'data:'+mime+';base64,'+b64;
+    }
+
+    /* ---------- health check ---------- */
+    async function health(){
+      var badge = $('#healthBadge');
+      try {
+        var b = await fetch('/api/blob-url');
+        var e = await fetch('/api/extract');
+        if (b.ok && e.ok) {
+          badge.textContent = 'API ok';
+          badge.className = "text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700";
+        } else {
+          badge.textContent = 'API parziali';
+          badge.className = "text-xs px-2.5 py-1 rounded-full bg-amber-100 text-amber-700";
+        }
+      } catch(err){
+        badge.textContent = 'API offline';
+        badge.className = "text-xs px-2.5 py-1 rounded-full bg-rose-100 text-rose-700";
+      }
+    }
+
+    /* ---------- API helpers ---------- */
+    async function getUploadUrl(){
+      var r = await fetch('/api/blob-url');
+      if (!r.ok) throw new Error('blob-url non disponibile');
+      var j = await r.json();
+      if (!(j && j.uploadUrl)) throw new Error('uploadUrl mancante');
+      return j.uploadUrl;
+    }
+    async function uploadToBlob(uploadUrl, file){
+      var fd = new FormData();
+      fd.append('file', file, file.name || 'file');
+      var r = await fetch(uploadUrl, { method:'POST', body: fd });
+      var j; try { j = await r.json(); } catch(e){ j = {}; }
+      if (!r.ok || !(j && j.url)) throw new Error((j && j.message) || 'Upload fallito');
+      return j.url;
+    }
+    async function extractWithUrl(blobUrl, name){
+      var r = await fetch('/api/extract', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ fileUrl: blobUrl, fileName: name })
+      });
+      var j; try { j = await r.json(); } catch(e){ j = {}; }
+      if (!r.ok) throw new Error((j && j.message) || 'Errore estrazione');
+      return (j && (j.text || j.content || j.result)) || '';
+    }
+    async function transcribeWithUrl(blobUrl){
+      var r = await fetch('/api/whisper', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ url: blobUrl })
+      });
+      var j; try { j = await r.json(); } catch(e){ j = {}; }
+      if (!r.ok || !(j && j.ok)) throw new Error((j && j.message) || 'Errore trascrizione');
+      return (j && j.text) || '';
+    }
+
+    /* ---------- Fallback locali (pulsanti rapidi) ---------- */
+    function cleanText(t){
+      t = String(t || "");
+      return t.replace(/\r/g,"")
+        .replace(/[ \t]+\n/g,"\n")
+        .replace(/\n{3,}/g,"\n\n")
+        .replace(/[ \t]{2,}/g," ")
+        .trim();
+    }
+    function toMinutes(t){
+      var lines = cleanText(t).split("\n").filter(function(x){return x;});
+      var bullets = lines.map(function(l){ return "- " + l.trim(); }).join("\n");
+      var date = new Date().toLocaleString();
+      return "# Verbale\n_Data:_ "+date+"\n\n## Punti trattati\n"+bullets+"\n";
+    }
+    function toTranscriptLocal(t){
+      return cleanText(
+        String(t||"")
+          .replace(/\[?\(?\b\d{1,2}:\d{2}(?::\d{2})?\)?\]?/g, "")
+          .replace(/\b(eh+m*|mm+|mah|cioè|tipo|allora)\b/gi, "")
+          .replace(/(?:\n?\s*[•\-–]\s+)/g, "\n")
+      );
+    }
+    async function callTextAPI(endpoints, payload){
+      endpoints = endpoints || [];
+      for (var i=0;i<endpoints.length;i++){
+        var ep = endpoints[i];
+        try{
+          var r = await fetch(ep, {
+            method:"POST",
+            headers:{ "Content-Type":"application/json" },
+            body: JSON.stringify(payload)
+          });
+          var j; try { j = await r.json(); } catch(e){ j = {}; }
+          if (r.ok){
+            var out = (j && (j.text || j.verbale || j.content || j.result)) || "";
+            if (out && typeof out === "string") return out;
+          }
+        }catch(e){}
+      }
+      return "";
+    }
+    async function runNotesAction(kind){
+      var ta = $('#notes');
+      var src = (ta.value || "").trim();
+      if (!src){ alert("Incolla o scrivi del testo negli Appunti prima."); return; }
+
+      var ids = ["#btnClean","#btnMinutesAI","#btnTranscribe","#btnGenerate"];
+      function disable(v){
+        for (var i=0;i<ids.length;i++){ var b=document.querySelector(ids[i]); if (b) b.disabled=v; }
+      }
+      disable(true);
+
+      try{
+        var out = "";
+
+        if (kind === "cleanup"){
+          out = await callTextAPI(["/api/cleanup"], { notes: src });
+          if (!out) out = cleanText(src);
+          ta.value = out;
+          $('#result').textContent = out;
+
+        } else if (kind === "minutes"){
+          out = await callTextAPI(["/api/minutes","/api/format","/api/verbale"], { notes: src });
+          if (!out) out = toMinutes(src);
+          $('#result').textContent = out;
+
+        } else if (kind === "transcript"){
+          out = await callTextAPI(["/api/cleanup"], { notes: src, mode: "transcript" });
+          if (!out) out = toTranscriptLocal(src);
+          ta.value = out;
+          $('#result').textContent = out;
+        }
+      } finally {
+        disable(false);
+      }
+    }
+
+    /* ---------- NLP leggera client-side (Analisi intelligente) ---------- */
+    // version senza lookbehind (compat): spezza creando un separatore dopo [.?!] seguiti da spazio+lettera maiuscola
+    function splitSentences(t){
+      t = cleanText(t);
+      // Inserisce un separatore "|" dopo . ? ! seguiti da spazio + Maiuscola (italiana)
+      var marked = t.replace(/([\.!\?])\s+([A-ZÀ-Ú])/g, "$1|$2");
+      var parts = marked.split("|");
+      var out = [];
+      for (var i=0;i<parts.length;i++){
+        var s = parts[i].trim();
+        if (s) out.push(s);
+      }
+      return out;
+    }
+    function summarizeText(t, maxSentences){
+      maxSentences = maxSentences || 5;
+      var cues = [
+        "decisione","decide","delibera","approva","stabilisce","si conviene",
+        "scadenza","entro","termine","deadline","consegna",
+        "responsabile","incarica","assegnato","owner",
+        "bilancio","budget","priorità","urgente","importante"
+      ];
+      var sents = splitSentences(t);
+      if (!sents.length) return "";
+      var scores = sents.map(function(s, i){
+        var lc = s.toLowerCase();
+        var cueScore = 0;
+        for (var k=0;k<cues.length;k++) if (lc.indexOf(cues[k]) !== -1) cueScore++;
+        var posScore = (i===0?1:0) + (i===sents.length-1?0.5:0);
+        var lenScore = Math.min(s.length/120, 1);
+        return { s: s, score: cueScore*2 + posScore + lenScore*0.5 };
+      });
+      scores.sort(function(a,b){ return b.score - a.score; });
+      var take = scores.slice(0, maxSentences).map(function(x){ return x.s; });
+      return take.join(" ");
+    }
+    function extractHighlights(t){
+      var txt = cleanText(t);
+      var decisions = [], deadlines = [], owners = [];
+      var lines = txt.split("\n").map(function(l){ return l.trim(); }).filter(function(x){return x;});
+      var reDate = /\b(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}|(?:\d{1,2}\s+(?:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-z]*\s+\d{4}))\b/gi;
+
+      for (var i=0;i<lines.length;i++){
+        var l = lines[i];
+        var ll = l.toLowerCase();
+
+        if (/(delibera|si decide|si stabilisce|si approva|viene approvato|si conviene)/i.test(ll)) {
+          decisions.push(l);
+        }
+        if (/(entro|scadenza|termine|deadline|entro e non oltre|per il|entro il)/i.test(ll)) {
+          var m = l.match(reDate);
+          var dateMatch = m ? m[0] : "";
+          deadlines.push(dateMatch ? (l + " (data: " + dateMatch + ")") : l);
+        }
+        var m1 = l.match(/responsabile\s*:\s*(.+)$/i);
+        var m2 = l.match(/a cura di\s+(.+)$/i);
+        var m3 = l.match(/si incarica\s+([A-ZÀ-Ú][A-Za-zÀ-ÿ'’\- ]+)\s+di/i);
+        var m4 = l.match(/assegnat[oa]\s+a\s+([A-ZÀ-Ú][A-Za-zÀ-ÿ'’\- ]+)/i);
+        if (m1) owners.push(m1[1].trim());
+        else if (m2) owners.push(m2[1].trim());
+        else if (m3) owners.push(m3[1].trim());
+        else if (m4) owners.push(m4[1].trim());
+      }
+
+      // de-dup
+      function unique(arr){
+        var seen = Object.create(null);
+        var out = [];
+        for (var i=0;i<arr.length;i++){
+          var v = arr[i];
+          if (!seen[v]){ seen[v]=1; out.push(v); }
+        }
+        return out;
+      }
+      return {
+        decisions: unique(decisions),
+        deadlines: unique(deadlines),
+        owners:    unique(owners)
+      };
+    }
+    function extractActions(t){
+      var txt = cleanText(t);
+      var lines = txt.split("\n").map(function(l){return l.trim();}).filter(function(x){return x;});
+      var verbs = /(inviare|invia|preparare|prepara|contattare|contatta|verificare|verifica|aggiornare|aggiorna|convocare|convoca|pagare|paga|richiedere|richiede|redigere|redigi|prenotare|prenota|organizzare|organizza|acquistare|acquista|fare|fai|eseguire|esegue)/i;
+      var reDate = /\b(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}|(?:\d{1,2}\s+(?:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-z]*\s+\d{4}))\b/gi;
+
+      var items = [];
+      for (var i=0;i<lines.length;i++){
+        var l = lines[i];
+        if (l.charAt(0)==="-" || l.charAt(0)==="•" || verbs.test(l)) {
+          var m = l.match(reDate);
+          var due = (m ? m[0] : "") || (/(entro|deadline|scadenza|termine)/i.test(l) ? "entro (data da definire)" : "");
+          var mOwner = (l.match(/(?:da|a|per)\s+([A-ZÀ-Ú][A-Za-zÀ-ÿ'’\- ]+)\b/)||[])[1] ||
+                       (l.match(/(?:responsabile|assegnat[oa])\s*:\s*([A-ZÀ-Ú][A-Za-zÀ-ÿ'’\- ]+)/i)||[])[1] || "";
+          items.push({ task: l.replace(/^[\-\•]\s*/, ""), owner: mOwner || null, due: due || null });
+        }
+      }
+      var seen = Object.create(null);
+      var out = [];
+      for (var j=0;j<items.length;j++){
+        var it = items[j];
+        var k = (it.task + "|" + (it.owner||"") + "|" + (it.due||"")).toLowerCase();
+        if (!seen[k]){ seen[k]=1; out.push(it); }
+      }
+      return out;
+    }
+    function suggestTags(t){
+      var lc = String(t||"").toLowerCase();
+      var TAGS = {
+        Bilancio: ["bilancio","consuntivo","preventivo","spese","budget","quote","riparto"],
+        Lavori:   ["lavori","manutenzione","appalto","impresa","cantiere","capitolato"],
+        Convocazione: ["convocazione","ordine del giorno","odg","assemblea","verbale"],
+        Fornitori: ["fornitore","fornitori","preventivo","offerta","contratto","fattura"],
+        Sicurezza: ["sicurezza","incendio","impianto","adeguamento","certificazione"],
+        Pagamenti: ["pagare","pagamento","mav","bonifico","morosità","sollecito"]
+      };
+      var out = [];
+      for (var tag in TAGS){
+        var kws = TAGS[tag];
+        for (var i=0;i<kws.length;i++){
+          if (lc.indexOf(kws[i]) !== -1){ out.push(tag); break; }
+        }
+      }
+      return out.length ? out : ["Generale"];
+    }
+    function renderList(el, arr, bullet){
+      bullet = bullet || "- ";
+      el.textContent = (arr && arr.length) ? arr.map(function(x){return bullet+x;}).join("\n") : "—";
+    }
+    function renderTodos(el, items){
+      if (!(items && items.length)){ el.textContent = "—"; return; }
+      el.textContent = items.map(function(it){
+        var who = it.owner ? " ["+it.owner+"]" : "";
+        var due = it.due ? " (scad.: "+it.due+")" : "";
+        return "□ " + it.task + who + due;
+      }).join("\n");
+    }
+
+    /* ---------- Fallback: testo PDF locale ---------- */
+    async function extractPdfTextLocal(arrayBuffer, maxPages){
+      maxPages = maxPages || 8;
+      var pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      var out = '';
+      var n = Math.min(pdf.numPages, maxPages);
+      for (var i=1;i<=n;i++){
+        var page = await pdf.getPage(i);
+        var content = await page.getTextContent();
+        var line = content.items.map(function(it){ return it.str; }).join(' ');
+        out += line + '\n\n';
+      }
+      if (pdf.numPages > n) out += "\n[... testo troncato a "+n+"/"+pdf.numPages+" pagine ...]\n";
+      return out.trim();
+    }
+
+    /* ---------- Gestione file & anteprima ---------- */
+    async function handleFiles(files){
+      for (var f=0; f<files.length; f++){
+        var file = files[f];
+        var name = file.name || 'file';
+        var ext  = (name.split('.').pop() || '').toLowerCase();
+        var meta = (file.type || '(sconosciuto)') + ' · ' + new Intl.NumberFormat('it-IT').format(file.size) + ' B';
+        var li = addQueueRow(name, meta, 'in coda…');
+
+        try{
+          var isText  = (ext==='txt' || ext==='md');
+          var isDocx  = (ext==='docx');
+          var isPdf   = (ext==='pdf');
+          var isAudio = (['mp3','m4a','wav','ogg','webm'].indexOf(ext)!==-1);
+
+          if (isText){
+            setRowStatus(li, 'lettura locale…');
+            var t = await file.text();
+            setPreviewHTML('<pre style="white-space:pre-wrap;">'+escapeHTML(t)+'</pre>');
+            appendToNotes('Testo locale: '+name, t);
+            setRowStatus(li, 'anteprima pronta');
+            continue;
+          }
+
+          if (isDocx){
+            setRowStatus(li, 'conversione .docx…');
+            var arrayBuffer = await file.arrayBuffer();
+            var res = await window.mammoth.convertToHtml({ arrayBuffer: arrayBuffer }, {
+              styleMap: [
+                "p[style-name='Title'] => h1:fresh",
+                "p[style-name='Heading 1'] => h2:fresh",
+                "p[style-name='Heading 2'] => h3:fresh"
+              ]
+            });
+            var html = (res && res.value) || "";
+            setPreviewHTML(html || '<p>(Documento vuoto)</p>');
+            var tmp = document.createElement('div'); tmp.innerHTML = html;
+            var plain = (tmp.textContent || tmp.innerText || '').trim();
+            appendToNotes('Estratto (locale): '+name, plain);
+            setRowStatus(li, 'anteprima pronta');
+            continue;
+          }
+
+          if (isPdf){
+            setRowStatus(li, 'anteprima PDF…');
+            var lib = window.pdfjsLib;
+            if (!lib){ throw new Error('PDF.js non inizializzato'); }
+
+            // Render 1ª pagina
+            var ab = await file.arrayBuffer();
+            var pdf = await lib.getDocument({ data: ab }).promise;
+            var page = await pdf.getPage(1);
+            var viewport = page.getViewport({ scale: 1.2 });
+            var canvas = document.createElement('canvas');
+            var ctx = canvas.getContext('2d');
+            canvas.height = viewport.height;
+            canvas.width  = viewport.width;
+            await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+            setPreviewHTML('');
+            previewEl.appendChild(canvas);
+
+            // Estrazione via /api/extract con dataURL
+            setRowStatus(li, 'estrazione testo…');
+            var text = '';
+            try {
+              var dataURL = arrayBufferToDataURL(ab, 'application/pdf');
+              var r = await fetch('/api/extract', {
+                method:'POST',
+                headers:{ 'Content-Type':'application/json' },
+                body: JSON.stringify({ dataURL: dataURL, fileName: name })
+              });
+              var j; try { j = await r.json(); } catch(e){ j = {}; }
+              if (!r.ok) throw new Error((j && j.message) || 'Errore estrazione');
+              text = (j && j.text) || '';
+            } catch(e){
+              // fallback locale
+            }
+            if (!text || !String(text).trim()){
+              setRowStatus(li, 'estrazione locale…');
+              text = await extractPdfTextLocal(ab, 8);
+            }
+            appendToNotes('Estratto: '+name, text || '(nessun testo)');
+            setRowStatus(li, 'estratto');
+            continue;
+          }
+
+          if (isAudio){
+            setRowStatus(li, 'trascrizione…');
+            var uploadUrl = await getUploadUrl();
+            var blobUrl   = await uploadToBlob(uploadUrl, file);
+            var textA     = await transcribeWithUrl(blobUrl);
+            appendToNotes('Trascrizione: '+name, textA);
+            setRowStatus(li, 'trascritto');
+            continue;
+          }
+
+          setRowStatus(li, 'formato non supportato', true);
+        } catch(e){
+          console.error(e);
+          setRowStatus(li, (e && e.message) || 'errore', true);
+          alert(name + ': ' + ((e && e.message) || 'Errore'));
+        }
+      }
+      $('#uploader').value = '';
+    }
+
+    /* ---------- Genera verbale (storico) ---------- */
+    async function generateMinutes(){
+      var notes = ($('#notes').value || '').trim();
+      if (!notes){ alert('Inserisci o carica degli appunti prima.'); return; }
+
+      var btn = $('#btnGenerate');
+      btn.disabled = true; btn.textContent = 'Genero…';
+
+      try{
+        var r = await fetch('/api/format', {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({ notes: notes })
+        });
+        var j; try { j = await r.json(); } catch(e){ j = {}; }
+        if (!r.ok) throw new Error((j && j.message) || 'Errore formattazione');
+        $('#result').textContent = (j && j.verbale) || '(vuoto)';
+      } catch (e){
+        alert((e && e.message) || 'Errore generazione');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Genera verbale';
+      }
+    }
+
+    /* ---------- Eventi UI ---------- */
+    $('#btnUpload').addEventListener('click', function(){ $('#uploader').click(); });
+    $('#uploader').addEventListener('change', function(e){
+      var files = Array.from(e.target.files || []);
+      if (files.length) handleFiles(files);
+    });
+    $('#btnClearPreview').addEventListener('click', function(){ setPreviewHTML(''); });
+
+    // Pulsanti rapidi sugli Appunti
+    document.querySelector('#btnClean')    .addEventListener('click', function(){ runNotesAction('cleanup'); });
+    document.querySelector('#btnMinutesAI').addEventListener('click', function(){ runNotesAction('minutes'); });
+    document.querySelector('#btnTranscribe').addEventListener('click', function(){ runNotesAction('transcript'); });
+
+    // Analisi intelligente
+    document.querySelector('#btnSummarize').addEventListener('click', function(){
+      var src = ($('#notes').value || '').trim();
+      if (!src){ alert('Incolla o carica del testo negli Appunti.'); return; }
+      var out = summarizeText(src, 5);
+      document.querySelector('#summaryBox').textContent = out || '—';
+    });
+    document.querySelector('#btnHighlights').addEventListener('click', function(){
+      var src = ($('#notes').value || '').trim();
+      if (!src){ alert('Incolla o carica del testo negli Appunti.'); return; }
+      var h = extractHighlights(src);
+      var el = document.querySelector('#highlightsBox');
+      var txt = "";
+      if (h.decisions && h.decisions.length) txt += "Decisioni:\n- " + h.decisions.join("\n- ") + "\n\n";
+      if (h.deadlines && h.deadlines.length) txt += "Scadenze:\n- " + h.deadlines.join("\n- ") + "\n\n";
+      if (h.owners && h.owners.length) txt += "Responsabili:\n- " + h.owners.join("\n- ");
+      el.textContent = txt.trim() || "—";
+    });
+    document.querySelector('#btnTodos').addEventListener('click', function(){
+      var src = ($('#notes').value || '').trim();
+      if (!src){ alert('Incolla o carica del testo negli Appunti.'); return; }
+      var items = extractActions(src);
+      renderTodos(document.querySelector('#todoBox'), items);
+    });
+    document.querySelector('#btnSuggestTags').addEventListener('click', function(){
+      var src = ($('#notes').value || '').trim();
+      if (!src){ alert('Incolla o carica del testo negli Appunti.'); return; }
+      var tags = suggestTags(src);
+      renderList(document.querySelector('#tagsBox'), tags, "# ");
+    });
+
+    $('#btnGenerate').addEventListener('click', generateMinutes);
+
+    $('#btnReset').addEventListener('click', function(){
+      $('#notes').value = '';
+      $('#result').textContent = 'Il verbale comparirà qui…';
+      setPreviewHTML('');
+      clearQueue();
+      document.querySelector('#summaryBox').textContent = '—';
+      document.querySelector('#highlightsBox').textContent = '—';
+      document.querySelector('#todoBox').textContent = '—';
+      document.querySelector('#tagsBox').textContent = '—';
+    });
+
+    $('#btnCopy').addEventListener('click', async function(){
+      var t = $('#result').textContent;
+      if (!t || t.indexOf('Il verbale') === 0) return;
+      try { await navigator.clipboard.writeText(t); alert('Copiato!'); }
+      catch (e) { alert('Impossibile copiare'); }
+    });
+
+    $('#btnDownload').addEventListener('click', function(){
+      var t = $('#result').textContent;
+      if (!t || t.indexOf('Il verbale') === 0) return;
+      var blob = new Blob([t], { type: 'text/markdown;charset=utf-8' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'verbale_' + new Date().toISOString().split('T')[0] + '.md';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+    });
+
+    /* Avvio */
+    health();
+  </script>
 </body>
 </html>
