@@ -1,11 +1,9 @@
 {
-  "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/$1",
-      "headers": {
-        "Content-Type": "text/html; charset=utf-8"
-      }
+  "functions": {
+    "api/*.js": {
+      "runtime": "nodejs20.x",
+      "memory": 1024,
+      "maxDuration": 30
     }
-  ]
+  }
 }
