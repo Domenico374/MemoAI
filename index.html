@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Memo AI</title>
 
-  <!-- Favicon / Touch icon -->
-  <link rel="icon" type="image/png" sizes="32x32" href="/img/logo-memoai.png">
-  <link rel="apple-touch-icon" href="/img/logo-memoai.png">
+  <!-- Favicon / Touch icon (percorso relativo) -->
+  <link rel="icon" type="image/png" sizes="32x32" href="img/logo-memoai.png">
+  <link rel="apple-touch-icon" href="img/logo-memoai.png">
   <meta name="theme-color" content="#0ea5e9">
 
   <script src="https://cdn.tailwindcss.com"></script>
@@ -16,13 +16,13 @@
   <!-- PDF preview (render first page) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
   <script>
-    // Configura PDF.js (worker) quando il DOM è pronto, con controlli di esistenza
+    // Configura PDF.js (worker) quando il DOM è pronto
     document.addEventListener('DOMContentLoaded', function(){
       var lib = window.pdfjsLib || (window['pdfjs-dist/build/pdf'] || null);
       if (lib && lib.GlobalWorkerOptions) {
         lib.GlobalWorkerOptions.workerSrc =
           'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
-        window.pdfjsLib = lib; // assicura alias globale
+        window.pdfjsLib = lib;
       }
     });
   </script>
@@ -38,11 +38,11 @@
       <div class="flex items-center gap-3">
         <a href="/" class="shrink-0" aria-label="MemoAI Home">
           <img
-            src="/img/logo-memoai.png"
+            src="img/logo-memoai.png"
             alt="Logo MemoAI"
             width="48" height="48" loading="lazy"
-            class="w-10 h-10 rounded-xl shadow-sm ring-1 ring-black/5"
-            onerror="this.style.display='none'">
+            class="w-10 h-10 rounded-xl shadow-sm ring-1 ring-black/5 bg-white"
+          />
         </a>
         <div>
           <h1 class="text-3xl font-bold">Memo AI</h1>
