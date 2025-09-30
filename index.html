@@ -5,543 +5,505 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Memo AI</title>
 
-  <!-- Favicon / Logo -->
-  <link rel="icon" type="image/png" href="./img/logo-memoai.png" />
-
-  <!-- UI libs -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <link
-    rel="stylesheet"
-    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
-  />
-
-  <!-- DOCX preview -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"/>
   <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
-
-  <!-- PDF preview -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-  <script>
-    document.addEventListener('DOMContentLoaded', function () {
-      var lib = window.pdfjsLib || (window['pdfjs-dist/build/pdf'] || null);
-      if (lib && lib.GlobalWorkerOptions) {
-        lib.GlobalWorkerOptions.workerSrc =
-          'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
-        window.pdfjsLib = lib;
-      }
-    });
-  </script>
 
   <style>
-    .notification {
-      position: fixed;
-      left: 50%;
-      transform: translateX(-50%);
-      bottom: 16px;
-      padding: 10px 14px;
-      border-radius: 10px;
-      background: #0ea5e9;
-      color: #fff;
-      z-index: 50;
-      opacity: 0;
-      transition: 0.25s;
-      box-shadow: 0 10px 30px rgba(2, 6, 23, 0.15);
-    }
-    .notification.is-danger {
-      background: #ef4444;
-    }
+    .notification{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;padding:10px 14px;border-radius:10px;background:#0ea5e9;color:#fff;z-index:50;opacity:0;transition:.25s;box-shadow:0 10px 30px rgba(2,6,23,.15);}
+    .notification.is-danger{background:#ef4444;}
+    .notification.is-warning{background:#f59e0b;}
+    .drop-zone.is-dragover{background:#dbeafe;border-color:#3b82f6;}
+    #fullscreenOverlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:9999;overflow:auto;}
+    #fullscreenOverlay.active{display:block;}
   </style>
 </head>
 
 <body class="bg-slate-50 text-slate-800">
-  <!-- Toast -->
   <div id="toast" class="notification"></div>
 
-  <!-- NAVBAR -->
+  <div id="fullscreenOverlay">
+    <div class="sticky top-0 bg-black/50 p-4 flex justify-end">
+      <button onclick="closeFullscreen()" class="px-4 py-2 bg-white rounded text-slate-900 hover:bg-slate-100">
+        <i class="fa-solid fa-times mr-2"></i>Chiudi
+      </button>
+    </div>
+    <div id="fullscreenContent" class="p-8"></div>
+  </div>
+
   <header class="sticky top-0 z-30 border-b bg-white/90 backdrop-blur">
-    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
       <div class="flex items-center gap-2">
-        <img
-          src="./img/logo-memoai.png"
-          alt="Memo AI"
-          class="w-8 h-8 rounded"
-        />
+        <span class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 text-white font-bold">M</span>
         <span class="font-semibold text-lg">Memo AI</span>
-        <span
-          id="navStatusApi"
-          class="ml-3 text-xs px-2 py-1 rounded-full bg-slate-200 text-slate-700"
-          >checking…</span
-        >
+        <span id="navStatusApi" class="ml-3 text-xs px-2 py-1 rounded-full bg-slate-200 text-slate-700">checking…</span>
       </div>
-      <nav class="hidden md:flex items-center gap-6 text-sm">
-        <a class="text-slate-500 hover:text-blue-600" href="#">Guida</a>
-        <a class="text-slate-500 hover:text-blue-600" href="#">Info</a>
-      </nav>
+      <div class="flex items-center gap-4">
+        <div class="hidden md:flex items-center gap-4 text-xs text-slate-500">
+          <span>File: <strong id="fileCount">0</strong></span>
+          <span>Coda: <strong id="queueCount">0</strong></span>
+        </div>
+      </div>
     </div>
   </header>
 
-  <main class="max-w-5xl mx-auto p-4 md:p-6">
-    <!-- Upload -->
+  <main class="max-w-6xl mx-auto p-4 md:p-6">
     <section class="bg-white border rounded-xl p-4 md:p-5 shadow-sm">
-      <div class="flex items-center justify-between">
-        <h2 class="font-semibold">
-          Carica file <span class="text-xs text-slate-400">(max ~4–5MB consigliati)</span>
-        </h2>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-semibold">Carica file</h2>
         <div class="flex items-center gap-2">
-          <button
-            id="btnSeleziona"
-            class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm"
-          >
-            <i class="fa-solid fa-file-arrow-up mr-2"></i>Seleziona file
+          <button id="btnUpload" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
+            <i class="fa-solid fa-file-arrow-up mr-2"></i>Seleziona
           </button>
-          <button
-            id="btnPulizia"
-            class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm"
-          >
-            Pulisci coda
-          </button>
+          <button id="btnClearQueue" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">Pulisci coda</button>
         </div>
       </div>
-      <input
-        id="fileInput"
-        type="file"
-        class="hidden"
-        accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp,.svg,.mp3,.m4a,.wav,.ogg,.flac,.mp4,.webm,.mov"
-      />
-      <p class="mt-2 text-xs text-slate-500">
-        Suggerimento: per i PDF scansionati serve OCR lato server per una buona estrazione.
-      </p>
+      
+      <div id="dropArea" class="drop-zone border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:bg-slate-50 transition">
+        <i class="fa-solid fa-cloud-arrow-up text-4xl text-slate-400 mb-2"></i>
+        <p class="text-sm text-slate-600">Trascina i file qui o clicca per selezionare</p>
+        <p class="text-xs text-slate-400 mt-1">PDF, DOCX, TXT, MD, Immagini, Audio, Video</p>
+      </div>
+      
+      <input id="uploader" type="file" class="hidden" multiple accept=".pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp,.svg,.mp3,.m4a,.wav,.ogg,.flac,.mp4,.webm,.mov" />
+      
+      <div class="mt-4">
+        <h3 class="text-sm font-semibold text-slate-600 mb-2">Coda elaborazione</h3>
+        <ul id="queue" class="space-y-2"></ul>
+      </div>
     </section>
 
-    <!-- Anteprima -->
     <section class="bg-white border rounded-xl p-4 md:p-5 shadow-sm mt-4">
       <div class="flex items-center justify-between">
         <h2 class="font-semibold">Anteprima</h2>
         <div class="flex items-center gap-2">
-          <button
-            id="btnSchermoIntero"
-            class="hidden md:inline px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm"
-          >
-            Schermo intero
+          <button id="btnFullscreen" class="hidden md:inline px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
+            <i class="fa-solid fa-expand mr-1"></i>Schermo intero
           </button>
-          <button
-            id="btnPulisciAnteprima"
-            class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm"
-          >
-            Pulisci anteprima
-          </button>
+          <button id="btnClearPreview" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">Pulisci</button>
         </div>
       </div>
-      <div
-        id="previewBox"
-        class="mt-3 min-h-[120px] grid place-items-center rounded-lg bg-slate-100/60 border border-dashed"
-      ></div>
-      <div id="previewNote" class="mt-2 text-xs text-slate-500">
-        L’anteprima comparirà qui…
+      <div id="preview" class="mt-3 min-h-[120px] grid place-items-center rounded-lg bg-slate-100/60 border border-dashed">
+        <p class="text-sm text-slate-400">L'anteprima comparirà qui…</p>
       </div>
     </section>
 
-    <!-- Appunti -->
     <section class="bg-white border rounded-xl p-4 md:p-5 shadow-sm mt-4">
       <div class="flex items-center justify-between">
         <h2 class="font-semibold">Appunti</h2>
         <div class="flex items-center gap-2">
-          <button
-            id="btnTrascrizione"
-            class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm"
-          >
-            <i class="fa-solid fa-wave-square mr-1"></i> Trascrizione
-          </button>
-          <button
-            id="btnReset"
-            class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm"
-          >
-            Resetta
-          </button>
+          <span id="charCount" class="text-xs text-slate-500">0 caratteri</span>
+          <button id="btnClean" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">Pulisci testo</button>
+          <button id="btnReset" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">Reset</button>
         </div>
       </div>
-      <textarea
-        id="appunti"
-        class="mt-3 w-full h-56 md:h-64 p-3 rounded-lg border outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50"
-        placeholder="Appunti trascritti o estratti…"
-      ></textarea>
-      <div class="flex flex-wrap gap-2 mt-3">
-        <button
-          id="btnGeneraVerbale"
-          class="px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-        >
-          <i class="fa-regular fa-file-lines mr-2"></i> Genera verbale
-        </button>
-      </div>
+      <textarea id="notes" class="mt-3 w-full h-56 md:h-64 p-3 rounded-lg border outline-none focus:ring-2 focus:ring-blue-400 bg-slate-50 font-mono text-sm"
+        placeholder="Scrivi o incolla i tuoi appunti qui, oppure carica un file sopra…"></textarea>
     </section>
 
-    <!-- Analisi intelligente -->
     <section class="bg-white border rounded-xl p-4 md:p-5 shadow-sm mt-4">
-      <div class="flex items-center justify-between">
+      <div class="flex items-center justify-between mb-3">
         <h2 class="font-semibold">Analisi intelligente</h2>
         <div class="flex flex-wrap gap-2">
-          <button id="btnRiassunto" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            Riassunto
-          </button>
-          <button id="btnPunti" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            Punti salienti
-          </button>
-          <button id="btnAttivita" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            Attività
-          </button>
-          <button id="btnSuggerisciTag" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            Suggerisci tag
-          </button>
+          <button id="btnSummarize" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">Riassunto</button>
+          <button id="btnHighlights" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">Punti salienti</button>
+          <button id="btnTodos" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">To-Do</button>
+          <button id="btnSuggestTags" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">Tag</button>
         </div>
       </div>
 
-      <div class="grid md:grid-cols-2 gap-4 mt-3">
+      <div class="grid md:grid-cols-2 gap-4">
         <div class="p-3 rounded-lg border bg-slate-50">
-          <div class="text-xs font-semibold text-slate-500 mb-1">Riassunto</div>
-          <div id="boxRiassunto" class="text-sm whitespace-pre-wrap"></div>
+          <div class="text-xs font-semibold text-slate-500 mb-2">Riassunto</div>
+          <pre id="summaryBox" class="text-sm whitespace-pre-wrap text-slate-700">—</pre>
         </div>
         <div class="p-3 rounded-lg border bg-slate-50">
-          <div class="text-xs font-semibold text-slate-500 mb-1">Punti salienti</div>
-          <div id="boxPunti" class="text-sm"></div>
+          <div class="text-xs font-semibold text-slate-500 mb-2">Punti salienti</div>
+          <pre id="highlightsBox" class="text-sm whitespace-pre-wrap text-slate-700">—</pre>
         </div>
         <div class="p-3 rounded-lg border bg-slate-50">
-          <div class="text-xs font-semibold text-slate-500 mb-1">Attività</div>
-          <div id="boxAttivita" class="text-sm"></div>
+          <div class="text-xs font-semibold text-slate-500 mb-2">Attività da fare</div>
+          <pre id="todoBox" class="text-sm whitespace-pre-wrap text-slate-700">—</pre>
         </div>
         <div class="p-3 rounded-lg border bg-slate-50">
-          <div class="text-xs font-semibold text-slate-500 mb-1">Tag suggeriti</div>
-          <div id="boxTag" class="text-sm"></div>
+          <div class="text-xs font-semibold text-slate-500 mb-2">Tag suggeriti</div>
+          <div id="tagsBox" class="text-sm text-slate-700">—</div>
         </div>
       </div>
     </section>
 
-    <!-- Verbale -->
     <section class="bg-white border rounded-xl p-4 md:p-5 shadow-sm mt-4">
-      <div class="flex items-center justify-between">
+      <div class="flex items-center justify-between mb-3">
         <h2 class="font-semibold">Verbale</h2>
-        <div class="flex items-center gap-2">
-          <button id="btnCopiaVerbale" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            Copiare
+        <div class="flex flex-wrap items-center gap-2">
+          <button id="btnGenerate" class="px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 text-sm">
+            <i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Genera
           </button>
-          <button id="btnScaricaMd" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            Scarica .md
-          </button>
-          <button id="btnScaricaPdf" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">
-            PDF
-          </button>
+          <button id="btnCopy" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">Copia</button>
+          <button id="btnDownload" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">.md</button>
+          <button id="btnExportPDF" class="px-3 py-1.5 rounded-lg border bg-slate-50 hover:bg-slate-100 text-sm">PDF</button>
         </div>
       </div>
-      <pre
-        id="verbaleOutput"
-        class="mt-3 bg-slate-900/90 text-slate-100 p-3 rounded-lg overflow-auto min-h-[120px] whitespace-pre-wrap text-sm"
-      >Il verbale comparirà qui…</pre>
+      <pre id="result" class="bg-slate-900 text-slate-100 p-4 rounded-lg overflow-auto min-h-[200px] whitespace-pre-wrap text-sm font-mono">Il verbale comparirà qui…</pre>
     </section>
   </main>
 
-  <!-- ============ APP LOGIC ============ -->
   <script>
-    // Utility
-    const $ = (s, r = document) => r.querySelector(s);
-    function showToast(msg, kind = 'ok') {
-      const t = $('#toast'); if (!t) return;
-      t.textContent = msg;
-      t.className = 'notification ' + (kind === 'err' ? 'is-danger' : '');
-      t.style.opacity = '1';
-      setTimeout(() => (t.style.opacity = '0'), 2200);
-    }
-    function setBusy(on) { document.body.style.cursor = on ? 'progress' : 'default'; }
+    document.addEventListener('DOMContentLoaded',function(){
+      if(window.pdfjsLib){
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+      }
+    });
 
-    // Health check
-    async function health() {
-      const badge = $('#navStatusApi');
-      try {
-        const tests = ['/api/upload', '/api/extract', '/api/cleanup', '/api/format'];
-        const results = await Promise.all(tests.map(u => fetch(u, { method: 'OPTIONS' })));
-        if (results.every(r => r.ok)) {
-          badge.textContent = 'API ok';
-          badge.className = 'ml-3 text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-700';
-        } else if (results.some(r => r.ok)) {
-          badge.textContent = 'API parziali';
-          badge.className = 'ml-3 text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700';
-        } else {
-          badge.textContent = 'API offline';
-          badge.className = 'ml-3 text-xs px-2 py-1 rounded-full bg-rose-100 text-rose-700';
+    const $=(s,r=document)=>r.querySelector(s);
+    let fileQueue=[],fileCount=0;
+
+    function showToast(msg,kind='ok'){
+      const t=$('#toast');if(!t)return;
+      t.textContent=msg;
+      t.className='notification '+(kind==='err'?'is-danger':kind==='warning'?'is-warning':'');
+      t.style.opacity='1';
+      setTimeout(()=>t.style.opacity='0',2200);
+    }
+
+    function cleanApiResponse(text){
+      if(!text)return '';
+      return text.replace(/<long_conversation_reminder>[\s\S]*?<\/long_conversation_reminder>/gi,'')
+        .replace(/<.*?>[\s\S]*?<\/antml:.*?>/gi,'')
+        .replace(/<\/?antml:.*?>/gi,'')
+        .trim();
+    }
+
+    function updateQueueCounter(){$('#queueCount').textContent=fileQueue.length;}
+    function updateCharCount(){$('#charCount').textContent=($('#notes').value||'').length+' caratteri';}
+    function incrementFileCount(){fileCount++;$('#fileCount').textContent=fileCount;}
+
+    async function health(){
+      const badge=$('#navStatusApi');
+      try{
+        const tests=['/api/upload','/api/extract'];
+        const results=await Promise.all(tests.map(u=>fetch(u,{method:'OPTIONS'})));
+        if(results.every(r=>r.ok)){
+          badge.textContent='API ok';
+          badge.className='ml-3 text-xs px-2 py-1 rounded-full bg-emerald-100 text-emerald-700';
+        }else{
+          badge.textContent='API parziali';
+          badge.className='ml-3 text-xs px-2 py-1 rounded-full bg-amber-100 text-amber-700';
         }
-      } catch {
-        badge.textContent = 'API offline';
-        badge.className = 'ml-3 text-xs px-2 py-1 rounded-full bg-rose-100 text-rose-700';
+      }catch{
+        badge.textContent='API offline';
+        badge.className='ml-3 text-xs px-2 py-1 rounded-full bg-rose-100 text-rose-700';
       }
     }
 
-    // API helpers
-    async function uploadViaApi(file) {
-      const fd = new FormData();
-      fd.append('file', file, file.name || 'file');
-      fd.append('contentType', file.type || 'application/octet-stream');
-      const r = await fetch('/api/upload', { method: 'POST', body: fd });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j?.message || j?.error || 'Upload fallito');
-      const url = j?.data?.url || j?.url;
-      if (!url) throw new Error('Upload riuscito ma URL mancante');
+    async function uploadViaApi(file){
+      const fd=new FormData();
+      fd.append('file',file,file.name||'file');
+      fd.append('contentType',file.type||'application/octet-stream');
+      const r=await fetch('/api/upload',{method:'POST',body:fd});
+      const j=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(j?.message||j?.error||'Upload fallito');
+      const url=j?.data?.url||j?.url;
+      if(!url)throw new Error('Upload riuscito ma URL mancante');
       return url;
     }
 
-    async function extractWithUrl(blobUrl, name) {
-      const r = await fetch('/api/extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileUrl: blobUrl, fileName: name })
+    async function extractWithUrl(blobUrl,name){
+      const r=await fetch('/api/extract',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({fileUrl:blobUrl,fileName:name})
       });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j?.message || j?.error || 'Errore estrazione');
-      return j?.text || j?.content || j?.result || '';
+      const j=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(j?.message||j?.error||'Errore estrazione');
+      return cleanApiResponse(j?.text||j?.content||j?.result||'');
     }
 
-    async function transcribeWithUrl(blobUrl) {
-      try {
-        const r = await fetch('/api/whisper', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: blobUrl })
-        });
-        const j = await r.json().catch(() => ({}));
-        if (r.ok && j?.text) return j.text;
-        if (!r.ok) throw new Error(j?.message || j?.error || 'Errore whisper');
-      } catch (_) {}
-      const r2 = await fetch('/api/transcribe-audio', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: blobUrl })
+    async function transcribeWithUrl(blobUrl){
+      const r=await fetch('/api/transcribe-audio',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({url:blobUrl})
       });
-      const j2 = await r2.json().catch(() => ({}));
-      if (!r2.ok || !j2?.text) throw new Error(j2?.message || j2?.error || 'Errore trascrizione');
-      return j2.text || '';
+      const j=await r.json().catch(()=>({}));
+      if(!r.ok||!j?.text)throw new Error(j?.message||j?.error||'Errore trascrizione');
+      return cleanApiResponse(j.text||'');
     }
 
-    // Preview
-    async function renderPreview(fileOrUrl, typeHint = '') {
-      const box = $('#previewBox'), note = $('#previewNote');
-      box.innerHTML = ''; if (note) note.textContent = '';
-      let url, mime = typeHint;
-      if (typeof fileOrUrl === 'string') url = fileOrUrl;
-      else { mime = fileOrUrl.type || ''; url = URL.createObjectURL(fileOrUrl); }
+    async function renderPreview(fileOrUrl,typeHint=''){
+      const box=$('#preview');
+      box.innerHTML='';
+      let url,mime=typeHint;
+      if(typeof fileOrUrl==='string'){url=fileOrUrl;}
+      else{mime=fileOrUrl.type||'';url=URL.createObjectURL(fileOrUrl);}
 
-      // PDF
-      if (mime.includes('pdf') || /\.pdf($|\?)/i.test(url)) {
-        const canvas = document.createElement('canvas'); canvas.className = 'w-full rounded';
+      if(mime.includes('pdf')||/\.pdf($|\?)/i.test(url)){
+        const canvas=document.createElement('canvas');canvas.className='w-full rounded';
         box.appendChild(canvas);
-        const pdf = window.pdfjsLib; if (!pdf) { box.textContent = 'PDF.js non disponibile'; return; }
-        const doc = await pdf.getDocument(url).promise;
-        const page = await doc.getPage(1);
-        const viewport = page.getViewport({ scale: 1.1 });
-        canvas.width = viewport.width; canvas.height = viewport.height;
-        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        const pdf=window.pdfjsLib;if(!pdf){box.textContent='PDF.js non disponibile';return;}
+        const doc=await pdf.getDocument(url).promise;
+        const page=await doc.getPage(1);
+        const viewport=page.getViewport({scale:1.1});
+        canvas.width=viewport.width;canvas.height=viewport.height;
+        await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
         return;
       }
-      // DOCX
-      if (/\.docx($|\?)/i.test(url) || mime.includes('wordprocessingml.document')) {
-        const res = await fetch(url); const buf = await res.arrayBuffer();
-        const out = await window.mammoth.convertToHtml({ arrayBuffer: buf });
-        const wrap = document.createElement('div');
-        wrap.className = 'prose prose-slate max-w-none bg-white p-4 rounded';
-        wrap.innerHTML = out.value || '<em>(documento vuoto)</em>';
-        box.appendChild(wrap); return;
+      if(/\.docx($|\?)/i.test(url)||mime.includes('wordprocessingml.document')){
+        const res=await fetch(url);const buf=await res.arrayBuffer();
+        const out=await window.mammoth.convertToHtml({arrayBuffer:buf});
+        const wrap=document.createElement('div');
+        wrap.className='prose prose-slate max-w-none bg-white p-4 rounded';
+        wrap.innerHTML=out.value||'<em>(documento vuoto)</em>';
+        box.appendChild(wrap);return;
       }
-      // Image
-      if (mime.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(url)) {
-        const img = new Image(); img.src = url; img.className = 'max-h-[360px] rounded shadow';
-        box.appendChild(img); return;
+      if(mime.startsWith('image/')||/\.(png|jpe?g|gif|webp|svg)$/i.test(url)){
+        const img=new Image();img.src=url;img.className='max-h-[360px] rounded shadow';
+        box.appendChild(img);return;
       }
-      // Audio
-      if (mime.startsWith('audio/') || /\.(mp3|m4a|wav|ogg|flac)$/i.test(url)) {
-        const audio = document.createElement('audio'); audio.controls = true; audio.src = url; audio.className = 'w-full';
-        box.appendChild(audio); return;
+      if(mime.startsWith('audio/')||/\.(mp3|m4a|wav|ogg|flac)$/i.test(url)){
+        const audio=document.createElement('audio');audio.controls=true;audio.src=url;audio.className='w-full';
+        box.appendChild(audio);return;
       }
-      // Video
-      if (mime.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(url)) {
-        const video = document.createElement('video'); video.controls = true; video.src = url; video.className = 'w-full rounded';
-        box.appendChild(video); return;
+      if(mime.startsWith('video/')||/\.(mp4|webm|mov)$/i.test(url)){
+        const video=document.createElement('video');video.controls=true;video.src=url;video.className='w-full rounded';
+        box.appendChild(video);return;
       }
-      // Text
-      const pre = document.createElement('pre');
-      pre.className = 'bg-slate-900/80 text-slate-100 p-3 rounded text-xs whitespace-pre-wrap w-full';
-      try { const txt = await (await fetch(url)).text(); pre.textContent = txt.slice(0, 4000) || '(vuoto)'; }
-      catch { pre.textContent = '(Anteprima non disponibile)'; }
+      const pre=document.createElement('pre');
+      pre.className='bg-slate-900/80 text-slate-100 p-3 rounded text-xs whitespace-pre-wrap w-full';
+      try{const txt=await(await fetch(url)).text();pre.textContent=txt.slice(0,4000)||'(vuoto)';}
+      catch{pre.textContent='(Anteprima non disponibile)';}
       box.appendChild(pre);
     }
 
-    // State & flow
-    let lastFile = null, lastUploaded = null;
+    function addToQueue(file){
+      const item={id:Date.now()+Math.random(),file,status:'pending',progress:0};
+      fileQueue.push(item);
+      updateQueueCounter();
+      const li=document.createElement('li');
+      li.className='border rounded-lg px-3 py-3 flex items-center justify-between';
+      li.dataset.id=item.id;
+      li.innerHTML=`<div><div class="font-medium text-sm">${file.name}</div><div class="text-xs text-slate-500">${(file.size/1024).toFixed(1)} KB</div></div><span class="text-xs px-2 py-1 rounded bg-slate-200">In attesa</span>`;
+      $('#queue').appendChild(li);
+      return item;
+    }
 
-    async function handleSelectedFile(file) {
-      lastFile = file;
-      await renderPreview(file, file.type);
-      showToast('File caricato in memoria');
+    function updateQueueItem(id,updates){
+      const item=fileQueue.find(q=>q.id===id);
+      if(!item)return;
+      Object.assign(item,updates);
+      const li=document.querySelector(`li[data-id="${id}"]`);
+      if(!li)return;
+      const badge=li.querySelector('span');
+      if(badge){
+        const map={pending:'In attesa',processing:'Elaborando',success:'Completato',error:'Errore'};
+        badge.textContent=map[item.status]||item.status;
+        badge.className='text-xs px-2 py-1 rounded '+(item.status==='success'?'bg-emerald-100 text-emerald-700':item.status==='error'?'bg-rose-100 text-rose-700':'bg-slate-200');
+      }
+      updateQueueCounter();
+    }
 
-      setBusy(true);
-      try {
-        const url = await uploadViaApi(file);
-        lastUploaded = { url, name: file.name || 'file', type: file.type || '' };
-
-        if ((file.type || '').startsWith('audio') || /\.(mp3|m4a|wav|ogg|flac)$/i.test(file.name)) {
-          showToast('Trascrizione in corso…');
-          const text = await transcribeWithUrl(url);
-          $('#appunti').value = text || '';
-          showToast('Trascrizione completata');
-          return;
+    async function handleFiles(files){
+      for(let file of files){
+        const queueItem=addToQueue(file);
+        try{
+          updateQueueItem(queueItem.id,{status:'processing',progress:20});
+          await renderPreview(file,file.type);
+          
+          updateQueueItem(queueItem.id,{progress:40});
+          const url=await uploadViaApi(file);
+          
+          updateQueueItem(queueItem.id,{progress:60});
+          
+          const isAudio=(file.type||'').startsWith('audio')||/\.(mp3|m4a|wav|ogg|flac)$/i.test(file.name);
+          const isVideo=(file.type||'').startsWith('video')||/\.(mp4|webm|mov)$/i.test(file.name);
+          
+          if(isAudio||isVideo){
+            showToast('Trascrizione in corso…');
+            const text=await transcribeWithUrl(url);
+            $('#notes').value=(($('#notes').value||'')+'\n\n'+text).trim();
+            updateCharCount();
+          }else{
+            const text=await extractWithUrl(url,file.name||'file');
+            $('#notes').value=(($('#notes').value||'')+'\n\n'+text).trim();
+            updateCharCount();
+          }
+          
+          updateQueueItem(queueItem.id,{status:'success',progress:100});
+          incrementFileCount();
+          showToast(`File ${file.name} elaborato`);
+        }catch(e){
+          console.error(e);
+          updateQueueItem(queueItem.id,{status:'error',progress:0});
+          showToast(`Errore: ${e.message}`,'err');
         }
-
-        showToast('Estrazione testo…');
-        const text = await extractWithUrl(url, file.name || 'file');
-        $('#appunti').value = text || '';
-        showToast('Estrazione completata');
-      } catch (e) {
-        console.error(e); showToast(e.message || 'Errore upload/estrazione', 'err');
-      } finally { setBusy(false); }
+      }
     }
 
-    // Format API
-    async function callFormat(kind, text) {
-      const r = await fetch('/api/format', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind, text })
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j?.error || j?.message || 'Errore /format');
-      return j?.result || j?.text || '';
+    function cleanText(t){
+      return String(t||'').replace(/\r/g,'').replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
     }
 
-    // Extract-data API
-    async function callExtractData(kind, text) {
-      const r = await fetch('/api/extract-data', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ kind, text })
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j?.error || j?.message || 'Errore /extract-data');
-      if (Array.isArray(j?.data)) return j.data;
-      if (typeof j?.data === 'string') return j.data.split('\n').filter(Boolean);
-      return j?.data || [];
+    function summarizeText(t){
+      const lines=t.split('\n').filter(l=>l.trim());
+      return lines.slice(0,5).join(' ');
     }
 
-    // Verbale API
-    async function callVerbale(text) {
-      const r = await fetch('/api/verbale', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text })
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j?.error || j?.message || 'Errore /verbale');
-      return j?.markdown || j?.md || j?.result || '';
+    function extractHighlights(t){
+      const lines=t.split('\n').filter(l=>l.trim());
+      const decisions=lines.filter(l=>/(decide|delibera|approva)/i.test(l));
+      const deadlines=lines.filter(l=>/(entro|scadenza|termine)/i.test(l));
+      return{decisions,deadlines};
     }
 
-    // Bind UI
-    function bindUi() {
-      const fi = $('#fileInput');
-      $('#btnSeleziona')?.addEventListener('click', () => fi?.click());
-      fi?.addEventListener('change', e => {
-        const f = e.target.files?.[0]; if (!f) return; handleSelectedFile(f);
-      });
-
-      $('#btnPulisciAnteprima')?.addEventListener('click', () => {
-        $('#previewBox').innerHTML = '';
-        $('#previewNote').textContent = 'L’anteprima comparirà qui…';
-      });
-
-      $('#btnPulizia')?.addEventListener('click', () => {
-        $('#appunti').value = '';
-        $('#previewBox').innerHTML = '';
-        $('#previewNote').textContent = 'L’anteprima comparirà qui…';
-        ['#boxRiassunto', '#boxPunti', '#boxAttivita', '#boxTag', '#verbaleOutput']
-          .forEach(id => { const el = $(id); if (el) el.textContent = ''; });
-        lastFile = null; lastUploaded = null; showToast('Pulito');
-      });
-
-      $('#btnReset')?.addEventListener('click', () => { $('#appunti').value = ''; });
-
-      $('#btnTrascrizione')?.addEventListener('click', async () => {
-        const url = lastUploaded?.url;
-        if (!url) return showToast('Seleziona prima un file audio', 'err');
-        setBusy(true);
-        try { const text = await transcribeWithUrl(url); $('#appunti').value = text || ''; showToast('Trascrizione completata'); }
-        catch (e) { showToast(e.message || 'Errore trascrizione', 'err'); }
-        finally { setBusy(false); }
-      });
-
-      $('#btnRiassunto')?.addEventListener('click', async () => {
-        const text = ($('#appunti').value || '').trim(); if (!text) return showToast('Nessun testo negli appunti', 'err');
-        setBusy(true);
-        try { const out = await callFormat('riassunto', text); $('#boxRiassunto').textContent = out; showToast('Riassunto pronto'); }
-        catch (e) { showToast(e.message || 'Errore riassunto', 'err'); }
-        finally { setBusy(false); }
-      });
-
-      $('#btnPunti')?.addEventListener('click', async () => {
-        const text = ($('#appunti').value || '').trim(); if (!text) return showToast('Nessun testo negli appunti', 'err');
-        setBusy(true);
-        try {
-          const arr = await callExtractData('highlights', text);
-          $('#boxPunti').innerHTML = '<ul class="list-disc ml-5">' + arr.map(li => `<li>${li}</li>`).join('') + '</ul>';
-          showToast('Punti salienti pronti');
-        } catch (e) { showToast(e.message || 'Errore punti salienti', 'err'); }
-        finally { setBusy(false); }
-      });
-
-      $('#btnAttivita')?.addEventListener('click', async () => {
-        const text = ($('#appunti').value || '').trim(); if (!text) return showToast('Nessun testo negli appunti', 'err');
-        setBusy(true);
-        try {
-          const arr = await callExtractData('action_items', text);
-          $('#boxAttivita').innerHTML = '<ul class="list-disc ml-5">' + arr.map(li => `<li>${li}</li>`).join('') + '</ul>';
-          showToast('Attività pronte');
-        } catch (e) { showToast(e.message || 'Errore attività', 'err'); }
-        finally { setBusy(false); }
-      });
-
-      $('#btnSuggerisciTag')?.addEventListener('click', async () => {
-        const text = ($('#appunti').value || '').trim(); if (!text) return showToast('Nessun testo negli appunti', 'err');
-        setBusy(true);
-        try {
-          const arr = await callExtractData('tags', text);
-          $('#boxTag').innerHTML = arr.map(t => `<span class="inline-block px-2 py-1 mr-1 mb-1 rounded bg-blue-100 text-blue-700 text-xs">${t}</span>`).join('');
-          showToast('Tag suggeriti');
-        } catch (e) { showToast(e.message || 'Errore tag', 'err'); }
-        finally { setBusy(false); }
-      });
-
-      $('#btnGeneraVerbale')?.addEventListener('click', async () => {
-        const text = ($('#appunti').value || '').trim(); if (!text) return showToast('Nessun testo negli appunti', 'err');
-        setBusy(true);
-        try { const md = await callVerbale(text); $('#verbaleOutput').textContent = md; showToast('Verbale generato'); }
-        catch (e) { showToast(e.message || 'Errore verbale', 'err'); }
-        finally { setBusy(false); }
-      });
-
-      $('#btnCopiaVerbale')?.addEventListener('click', async () => {
-        const v = $('#verbaleOutput').textContent || ''; if (!v) return;
-        await navigator.clipboard.writeText(v); showToast('Verbale copiato');
-      });
-
-      $('#btnScaricaMd')?.addEventListener('click', () => {
-        const v = $('#verbaleOutput').textContent || ''; if (!v) return;
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob([v], { type: 'text/markdown' }));
-        a.download = 'verbale.md'; a.click();
-      });
-
-      $('#btnScaricaPdf')?.addEventListener('click', () => {
-        const v = $('#verbaleOutput').textContent || ''; if (!v) return;
-        const w = window.open('', '_blank');
-        w.document.write(
-          '<pre style="font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; margin:24px;">' +
-          v.replace(/[&<>]/g, s => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[s])) +
-          '</pre>'
-        );
-        w.document.close(); w.focus(); w.print(); w.close();
-      });
+    function extractActions(t){
+      const lines=t.split('\n').filter(l=>l.trim());
+      return lines.filter(l=>l.startsWith('-')||l.startsWith('•')||(/(fare|inviare|preparare)/i.test(l)));
     }
 
-    bindUi();
+    async function generateMinutes(){
+      const notes=($('#notes').value||'').trim();
+      if(!notes){showToast('Inserisci degli appunti','warning');return;}
+      try{
+        const r=await fetch('/api/minutes',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({notes})
+        });
+        const j=await r.json().catch(()=>({}));
+        if(!r.ok)throw new Error(j?.error||'Errore');
+        $('#result').textContent=cleanApiResponse(j?.verbale||j?.markdown||'');
+        showToast('Verbale generato');
+      }catch(e){
+        showToast(e.message,'err');
+      }
+    }
+
+    window.openFullscreen=function(){
+      $('#fullscreenContent').innerHTML=$('#preview').innerHTML;
+      $('#fullscreenOverlay').classList.add('active');
+    };
+
+    window.closeFullscreen=function(){
+      $('#fullscreenOverlay').classList.remove('active');
+    };
+
     health();
+    updateQueueCounter();
+    updateCharCount();
+
+    const uploader=$('#uploader');
+    $('#btnUpload').addEventListener('click',()=>uploader.click());
+    uploader.addEventListener('change',e=>{
+      const files=Array.from(e.target.files||[]);
+      if(files.length)handleFiles(files);
+    });
+
+    const dropArea=$('#dropArea');
+    ['dragenter','dragover'].forEach(ev=>
+      dropArea.addEventListener(ev,e=>{e.preventDefault();dropArea.classList.add('is-dragover');})
+    );
+    ['dragleave','drop'].forEach(ev=>
+      dropArea.addEventListener(ev,e=>{e.preventDefault();dropArea.classList.remove('is-dragover');})
+    );
+    dropArea.addEventListener('drop',e=>{
+      const files=[...(e.dataTransfer?.files||[])];
+      if(files.length)handleFiles(files);
+    });
+    dropArea.addEventListener('click',()=>uploader.click());
+
+    $('#btnClearPreview').addEventListener('click',()=>{
+      $('#preview').innerHTML='<p class="text-sm text-slate-400">L\'anteprima comparirà qui…</p>';
+    });
+
+    $('#btnClearQueue').addEventListener('click',()=>{
+      fileQueue=[];
+      $('#queue').innerHTML='';
+      updateQueueCounter();
+      showToast('Coda pulita');
+    });
+
+    $('#btnFullscreen').addEventListener('click',openFullscreen);
+    $('#notes').addEventListener('input',updateCharCount);
+
+    $('#btnClean').addEventListener('click',()=>{
+      $('#notes').value=cleanText($('#notes').value);
+      updateCharCount();
+    });
+
+    $('#btnReset').addEventListener('click',()=>{
+      $('#notes').value='';
+      $('#result').textContent='Il verbale comparirà qui…';
+      $('#preview').innerHTML='<p class="text-sm text-slate-400">L\'anteprima comparirà qui…</p>';
+      fileQueue=[];
+      $('#queue').innerHTML='';
+      $('#summaryBox').textContent='—';
+      $('#highlightsBox').textContent='—';
+      $('#todoBox').textContent='—';
+      $('#tagsBox').textContent='—';
+      updateQueueCounter();
+      updateCharCount();
+      showToast('Reset completato');
+    });
+
+    $('#btnSummarize').addEventListener('click',()=>{
+      const src=($('#notes').value||'').trim();
+      if(!src){showToast('Inserisci del testo','warning');return;}
+      $('#summaryBox').textContent=summarizeText(src);
+    });
+
+    $('#btnHighlights').addEventListener('click',()=>{
+      const src=($('#notes').value||'').trim();
+      if(!src){showToast('Inserisci del testo','warning');return;}
+      const h=extractHighlights(src);
+      let txt='';
+      if(h.decisions.length)txt+='Decisioni:\n'+h.decisions.join('\n')+'\n\n';
+      if(h.deadlines.length)txt+='Scadenze:\n'+h.deadlines.join('\n');
+      $('#highlightsBox').textContent=txt||'—';
+    });
+
+    $('#btnTodos').addEventListener('click',()=>{
+      const src=($('#notes').value||'').trim();
+      if(!src){showToast('Inserisci del testo','warning');return;}
+      const items=extractActions(src);
+      $('#todoBox').textContent=items.length?items.map(it=>'□ '+it).join('\n'):'—';
+    });
+
+    $('#btnSuggestTags').addEventListener('click',()=>{
+      const src=($('#notes').value||'').trim();
+      if(!src){showToast('Inserisci del testo','warning');return;}
+      const tags=['Generale','Riunione','Progetto'];
+      $('#tagsBox').innerHTML=tags.map(t=>`<span class="inline-block px-2 py-1 mr-1 mb-1 rounded bg-blue-100 text-blue-700 text-xs">${t}</span>`).join('');
+    });
+
+    $('#btnGenerate').addEventListener('click',generateMinutes);
+
+    $('#btnCopy').addEventListener('click',async()=>{
+      const t=$('#result').textContent;
+      if(!t||t.includes('comparirà'))return;
+      await navigator.clipboard.writeText(t);
+      showToast('Copiato!');
+    });
+
+    $('#btnDownload').addEventListener('click',()=>{
+      const t=$('#result').textContent;
+      if(!t||t.includes('comparirà'))return;
+      const blob=new Blob([t],{type:'text/markdown'});
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      a.download='verbale_'+new Date().toISOString().split('T')[0]+'.md';
+      a.click();
+      showToast('File scaricato');
+    });
+
+    $('#btnExportPDF').addEventListener('click',()=>{
+      const t=$('#result').textContent;
+      if(!t||t.includes('comparirà'))return;
+      const w=window.open('','_blank');
+      w.document.write('<pre style="font-family:monospace;padding:24px;white-space:pre-wrap;">'+t.replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]))+'</pre>');
+      w.document.close();
+      w.print();
+    });
   </script>
 </body>
 </html>
