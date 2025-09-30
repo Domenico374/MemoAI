@@ -1,62 +1,56 @@
 <!doctype html>
 <html lang="it">
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Upload Test – Vercel Blob</title>
-<style>
-  body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:720px;margin:40px auto;padding:0 16px}
-  h1{margin:0 0 24px}
-  pre{background:#f6f6f6;padding:12px;border-radius:8px;white-space:pre-wrap;word-break:break-word;min-height:56px}
-  button{padding:8px 12px;border-radius:8px;border:1px solid #ddd;cursor:pointer;margin-left:8px}
-</style>
-
-<h1>Upload Test – Vercel Blob</h1>
-
-<input id="file" type="file" />
-<button type="button" onclick="startUpload()">Carica</button>
-
-<h3>Risposta</h3>
-<pre id="out">—</pre>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Upload Test</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+<main class="container">
+  <h1>Test upload → extract</h1>
+  <input type="file" id="f" />
+  <button id="btnUp">Carica</button>
+  <button id="btnExt" disabled>Estrai testo</button>
+  <article>
+    <h3>Anteprima</h3>
+    <div id="prev" style="overflow:auto;max-height:260px;border:1px dashed #ccc;padding:8px"></div>
+  </article>
+  <article>
+    <h3>Risposta</h3>
+    <pre id="out" style="min-height:140px"></pre>
+  </article>
+</main>
 
 <script>
-async function startUpload() {
-  const out = document.getElementById('out');
-  const fileInput = document.getElementById('file');
-  const f = fileInput.files[0];
-  if (!f) { alert('Seleziona un file'); return; }
+let lastDataURL = null, lastName = null;
+const $ = s => document.querySelector(s);
 
-  out.textContent = '1) chiedo l’URL...\n';
-
-  try {
-    // uso il dominio lyart esplicito per evitare confusione di deploy
-    const r = await fetch('https://memo-ai-lyart.vercel.app/api/blob-url', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        filename: f.name,
-        contentType: f.type || 'application/octet-stream'
-      })
-    });
-
-    const text = await r.text();
-    out.textContent += `/api/blob-url → HTTP ${r.status}\n${text}\n`;
-    if (!r.ok) return;
-
-    let j; try { j = JSON.parse(text); } catch { j = {}; }
-    if (!j.uploadUrl) { out.textContent += 'uploadUrl assente, stop.\n'; return; }
-
-    out.textContent += '\n2) carico il file...\n';
-    const up = await fetch(j.uploadUrl, { method: 'POST', body: f });
-    const upText = await up.text();
-    out.textContent += `upload → HTTP ${up.status}\n${upText}\n`;
-
-    if (up.ok) {
-      const publicUrl = 'https://blob.vercel-storage.com' + (j.blobPath || '');
-      out.textContent += `\nFatto!\nPercorso: ${j.blobPath || '(sconosciuto)'}\nURL (stima): ${publicUrl}\n`;
+$('#btnUp').onclick = async () => {
+  const f = $('#f').files[0];
+  if (!f) { alert('Scegli un file'); return; }
+  const fd = new FormData(); fd.append('file', f, f.name);
+  const r = await fetch('/api/upload', { method:'POST', body: fd });
+  const j = await r.json().catch(()=> ({}));
+  $('#out').textContent = JSON.stringify(j, null, 2);
+  if (j?.ok && j?.url) {
+    lastDataURL = j.url; lastName = j.name || f.name;
+    $('#btnExt').disabled = false;
+    if ((j.mime||'').startsWith('image/')) {
+      $('#prev').innerHTML = `<img src="${j.url}" style="max-width:100%">`;
+    } else {
+      $('#prev').textContent = j.url.slice(0,120) + '…';
     }
-  } catch (e) {
-    out.textContent += 'ERRORE JS: ' + (e?.message || e) + '\n';
+  } else {
+    $('#btnExt').disabled = true;
   }
-}
+};
+
+$('#btnExt').onclick = async () => {
+  if (!lastDataURL) return;
+  const r = await fetch('/api/extract', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ dataURL: lastDataURL, fileName: lastName })
+  });
+  const j = await r.json().catch(()=> ({}));
+  $('#out').textContent = JSON.stringify(j, null, 2);
+};
 </script>
-</html>
