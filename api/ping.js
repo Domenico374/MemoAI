@@ -1,9 +1,5 @@
-// api/ping.js
-export default function handler(req, res) {
-  res.status(200).json({
-    ok: true,
-    envKey: process.env.OPENAI_API_KEY ? "present" : "missing",
-    now: new Date().toISOString(),
-    method: req.method,
-  });
+export const runtime = 'nodejs';
+
+export default async function handler(req, res) {
+  res.status(200).json({ ok: true, time: Date.now(), method: req.method });
 }
