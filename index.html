@@ -4,6 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Memo AI</title>
+
+  <!-- Favicon / Touch icon -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/img/logo-memoai.png">
+  <link rel="apple-touch-icon" href="/img/logo-memoai.png">
+  <meta name="theme-color" content="#0ea5e9">
+
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- DOCX preview (client-side) -->
   <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
@@ -29,9 +35,19 @@
   <div class="max-w-4xl mx-auto p-6">
     <!-- Header -->
     <header class="mb-6 flex items-center justify-between gap-3">
-      <div>
-        <h1 class="text-3xl font-bold">Memo AI</h1>
-        <p class="text-sm text-slate-600">Upload file → Trascrizione / Estrazione → Formattazione</p>
+      <div class="flex items-center gap-3">
+        <a href="/" class="shrink-0" aria-label="MemoAI Home">
+          <img
+            src="/img/logo-memoai.png"
+            alt="Logo MemoAI"
+            width="48" height="48" loading="lazy"
+            class="w-10 h-10 rounded-xl shadow-sm ring-1 ring-black/5"
+            onerror="this.style.display='none'">
+        </a>
+        <div>
+          <h1 class="text-3xl font-bold">Memo AI</h1>
+          <p class="text-sm text-slate-600">Upload file → Trascrizione / Estrazione → Formattazione</p>
+        </div>
       </div>
       <span id="healthBadge" class="text-xs px-2.5 py-1 rounded-full bg-slate-200 text-slate-700">checking…</span>
     </header>
@@ -322,10 +338,8 @@
     }
 
     /* ---------- NLP leggera client-side (Analisi intelligente) ---------- */
-    // version senza lookbehind (compat): spezza creando un separatore dopo [.?!] seguiti da spazio+lettera maiuscola
     function splitSentences(t){
       t = cleanText(t);
-      // Inserisce un separatore "|" dopo . ? ! seguiti da spazio + Maiuscola (italiana)
       var marked = t.replace(/([\.!\?])\s+([A-ZÀ-Ú])/g, "$1|$2");
       var parts = marked.split("|");
       var out = [];
@@ -385,7 +399,6 @@
         else if (m4) owners.push(m4[1].trim());
       }
 
-      // de-dup
       function unique(arr){
         var seen = Object.create(null);
         var out = [];
