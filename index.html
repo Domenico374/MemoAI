@@ -3,59 +3,40 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MemoAI</title>
+  <title>Memo AI</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { background:#f5f7fb }
-    .drop.is-over { background:#e8f0ff; border-color:#3b82f6; }
+    #log { white-space:pre-wrap; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace }
   </style>
 </head>
 <body class="text-slate-800">
   <div class="max-w-4xl mx-auto p-6">
-    <!-- Header (senza logo) -->
-    <header class="mb-6 flex items-center justify-between gap-3">
-      <div>
-        <h1 class="text-3xl font-bold">MemoAI</h1>
-        <p class="text-sm text-slate-600">Upload → Estrazione testo → Appunti</p>
-      </div>
-      <span id="healthBadge" class="text-xs px-2.5 py-1 rounded-full bg-slate-200 text-slate-700">checking…</span>
+    <header class="mb-6">
+      <h1 class="text-3xl font-bold">Memo AI</h1>
+      <p class="text-sm text-slate-600">Carica PDF/DOCX/TXT/MD o Audio → Estrazione/Trascrizione → Verbale</p>
     </header>
 
     <!-- Upload -->
     <section class="bg-white rounded-2xl shadow p-5 mb-6">
-      <div class="flex items-start justify-between gap-3 mb-3">
+      <div class="flex items-start justify-between gap-3">
         <div>
           <h2 class="text-lg font-semibold">Carica file</h2>
           <p class="text-xs text-slate-500 mt-1">
-            PDF, DOCX, TXT/MD, audio e altro. (Per ora l’estrazione è disponibile per PDF/DOCX/TXT/MD)
+            PDF, DOCX, TXT/MD, MP3/M4A/WAV/OGG/WEBM
           </p>
         </div>
-        <div class="flex gap-2">
-          <button id="btnUpload" type="button"
-            class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Seleziona file</button>
-          <button id="btnClearQueue" type="button"
-            class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Pulisci coda</button>
-        </div>
+        <input id="uploader" type="file" multiple
+               accept=".pdf,.docx,.txt,.md,.mp3,.m4a,.wav,.ogg,.webm"
+               class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200" />
       </div>
-
-      <!-- zona drag & drop -->
-      <div id="drop" class="drop border-2 border-dashed rounded-xl p-6 text-center text-slate-500">
-        Trascina qui i file oppure usa “Seleziona file”
-      </div>
-
-      <ul id="queue" class="mt-4 space-y-2 text-sm"></ul>
-
-      <!-- input file nascosto -->
-      <input id="uploader" type="file" multiple
-             accept=".txt,.md,.pdf,.docx,.mp3,.m4a,.wav,.ogg,.webm"
-             class="hidden" />
     </section>
 
     <!-- Anteprima -->
     <section class="bg-white rounded-2xl shadow p-5 mb-6">
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-lg font-semibold">Anteprima</h2>
-        <button id="btnClearPreview" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Pulisci</button>
+        <button id="btnClearPreview" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Pulisci anteprima</button>
       </div>
       <div id="preview"
            class="prose max-w-none border border-slate-200 rounded-xl p-4 bg-slate-50 text-sm">
@@ -64,209 +45,182 @@
     </section>
 
     <!-- Appunti -->
-    <section class="bg-white rounded-2xl shadow p-5">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold">Appunti</h2>
-        <div class="flex gap-2">
-          <button id="btnClean" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Pulisci testo</button>
-          <button id="btnReset" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Reset</button>
-        </div>
-      </div>
+    <section class="bg-white rounded-2xl shadow p-5 mb-6">
+      <h2 class="text-lg font-semibold mb-3">Appunti</h2>
       <textarea id="notes" rows="12"
         class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-        placeholder="Qui apparirà il testo estratto…"></textarea>
-      <div class="mt-3 flex gap-2">
-        <button id="btnCopy" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Copia</button>
-        <button id="btnDownload" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Scarica .txt</button>
+        placeholder="Appunti trascritti o estratti…"></textarea>
+
+      <div class="mt-4 flex flex-wrap gap-2">
+        <button id="btnGenerate"
+          class="px-3 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700">
+          Genera verbale
+        </button>
+        <button id="btnReset"
+          class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">
+          Reset
+        </button>
       </div>
+    </section>
+
+    <!-- Verbale -->
+    <section class="bg-white rounded-2xl shadow p-5">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold">Verbale</h2>
+        <div class="flex gap-2">
+          <button id="btnCopy" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Copia</button>
+          <button id="btnDownload" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Scarica .md</button>
+        </div>
+      </div>
+      <pre id="result" class="whitespace-pre-wrap text-sm leading-6 text-slate-800">Il verbale comparirà qui…</pre>
+    </section>
+
+    <!-- Log -->
+    <section class="bg-white rounded-2xl shadow p-5 mt-6">
+      <h2 class="text-lg font-semibold mb-3">Log</h2>
+      <pre id="log" class="text-xs bg-slate-900 text-slate-100 p-3 rounded">pronto…</pre>
     </section>
   </div>
 
-  <script>
-    // ---------- helpers UI ----------
-    const $ = (s) => document.querySelector(s);
-    const queueEl = $('#queue');
-    const previewEl = $('#preview');
-    const dropEl = $('#drop');
+<script>
+const $ = (s) => document.querySelector(s);
+const logEl = $('#log');
+function log(...a){ logEl.textContent += '\\n' + a.join(' '); }
 
-    function addQueueRow(name, meta, status) {
-      const li = document.createElement('li');
-      li.className = "border rounded-lg px-3 py-2 flex items-center justify-between";
-      li.dataset.name = name;
-      li.innerHTML = `
-        <div>
-          <div class="font-medium">${name}</div>
-          <div class="text-slate-500 text-xs">${meta} · <span class="status">${status}</span></div>
-        </div>
-      `;
-      queueEl.appendChild(li);
-      return li;
-    }
-    function setRowStatus(li, status, danger=false) {
-      const s = li.querySelector('.status');
-      s.textContent = status;
-      s.className = "status " + (danger ? "text-red-500" : "text-slate-500");
-    }
-    function clearQueue() { queueEl.innerHTML = ''; }
-    function setPreviewHTML(html){
-      previewEl.innerHTML = html || '<p class="text-slate-500">L’anteprima comparirà qui…</p>';
-    }
-    function escapeHTML(s){
-      s = String(s || "");
-      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    }
-    function cleanText(t){
-      return String(t||'')
-        .replace(/\r/g,'')
-        .replace(/[ \t]+\n/g,'\n')
-        .replace(/\n{3,}/g,'\n\n')
-        .trim();
-    }
+function setPreview(html){
+  $('#preview').innerHTML = html || '<p class="text-slate-500">L’anteprima comparirà qui…</p>';
+}
 
-    // ---------- health check ----------
-    async function health(){
-      const badge = $('#healthBadge');
-      try {
-        const p = await fetch('/api/ping');
-        const e = await fetch('/api/extract');
-        if (p.ok && e.ok) {
-          badge.textContent = 'API ok';
-          badge.className = "text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700";
-        } else {
-          badge.textContent = 'API parziali';
-          badge.className = "text-xs px-2.5 py-1 rounded-full bg-amber-100 text-amber-700";
-        }
-      } catch {
-        badge.textContent = 'API offline';
-        badge.className = "text-xs px-2.5 py-1 rounded-full bg-rose-100 text-rose-700";
-      }
-    }
+function escapeHTML(s){
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 
-    // ---------- API helpers ----------
-    async function uploadFile(file){
-      const fd = new FormData();
-      fd.append('file', file, file.name || 'file');
-      const r = await fetch('/api/upload', { method:'POST', body: fd });
-      const j = await r.json().catch(()=> ({}));
-      if (!r.ok || !j?.ok || !j?.url) throw new Error(j?.message || 'Upload fallito');
-      return j; // { ok, url:dataURL, name, mime, size }
-    }
+async function upload(file){
+  const fd = new FormData();
+  fd.append('file', file, file.name||'file');
+  fd.append('contentType', file.type||'application/octet-stream');
+  log('POST /api/upload…');
+  const r = await fetch('/api/upload',{ method:'POST', body:fd });
+  const j = await r.json().catch(()=> ({}));
+  log('   status', r.status, JSON.stringify(j));
+  if (!r.ok) throw new Error(j?.message || 'Upload fallito');
+  if (!j?.url) throw new Error('URL mancante in risposta upload');
+  return j.url;
+}
 
-    async function extractFromDataURL(dataURL, name){
-      const r = await fetch('/api/extract', {
-        method:'POST',
-        headers:{ 'Content-Type':'application/json' },
-        body: JSON.stringify({ dataURL, fileName: name })
-      });
-      const j = await r.json().catch(()=> ({}));
-      if (!r.ok || !j?.ok) throw new Error(j?.message || 'Errore estrazione');
-      return j.text || '';
-    }
+async function extract(url, name){
+  log('POST /api/extract…');
+  const r = await fetch('/api/extract', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json' },
+    body: JSON.stringify({ fileUrl:url, fileName:name })
+  });
+  const j = await r.json().catch(()=> ({}));
+  log('   status', r.status, JSON.stringify(j).slice(0,200)+'…');
+  if (!r.ok) throw new Error(j?.message || 'Errore estrazione');
+  return j?.text || '';
+}
 
-    // ---------- Gestione file ----------
-    async function handleFiles(files) {
-      for (const file of files) {
-        const name = file.name || 'file';
-        const ext  = (name.split('.').pop() || '').toLowerCase();
-        const meta = `${file.type || '(sconosciuto)'} · ${new Intl.NumberFormat('it-IT').format(file.size)} B`;
-        const li = addQueueRow(name, meta, 'caricamento…');
+async function transcribe(url){
+  log('POST /api/transcribe-audio…');
+  const r = await fetch('/api/transcribe-audio', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json' },
+    body: JSON.stringify({ url })
+  });
+  const j = await r.json().catch(()=> ({}));
+  log('   status', r.status, JSON.stringify(j));
+  if (!r.ok) throw new Error(j?.message || 'Errore trascrizione');
+  return j?.text || '';
+}
 
-        try {
-          // 1) Upload → ottengo dataURL
-          const up = await uploadFile(file);
-          setRowStatus(li, 'estrazione…');
+function extOf(name){ return (name.split('.').pop()||'').toLowerCase(); }
 
-          // 2) Estrazione testo (solo docx/pdf/txt/md)
-          const isDoc = ['pdf','docx','txt','md'].includes(ext) || /pdf|word|text|markdown/.test(up.mime||'');
-          if (isDoc) {
-            const text = await extractFromDataURL(up.url, up.name || name);
-            // anteprima e appunti
-            setPreviewHTML('<pre style="white-space:pre-wrap">'+escapeHTML(text.slice(0,5000))+'</pre>');
-            const ta = $('#notes');
-            ta.value = (ta.value ? ta.value + '\n\n' : '') + text;
-            setRowStatus(li, 'estratto');
-            continue;
-          }
-
-          // formati non testuali: mostro anteprima se immagine/audio/video, altrimenti nota
-          if ((up.mime||'').startsWith('image/')) {
-            setPreviewHTML(`<img src="${up.url}" class="max-h-[360px] rounded shadow">`);
-            setRowStatus(li, 'caricato (immagine)');
-          } else if ((up.mime||'').startsWith('audio/')) {
-            setPreviewHTML(`<audio controls src="${up.url}" class="w-full"></audio>`);
-            setRowStatus(li, 'caricato (audio)');
-          } else if ((up.mime||'').startsWith('video/')) {
-            setPreviewHTML(`<video controls src="${up.url}" class="w-full rounded"></video>`);
-            setRowStatus(li, 'caricato (video)');
-          } else {
-            setPreviewHTML('<p class="text-slate-500">File caricato, nessuna anteprima disponibile.</p>');
-            setRowStatus(li, 'caricato');
-          }
-        } catch (e) {
-          console.error(e);
-          setRowStatus(li, e.message || 'errore', true);
-          alert(`${name}: ${e.message || 'Errore'}`);
-        }
+async function handleFiles(files){
+  for (const file of files){
+    try{
+      const name = file.name || 'file';
+      const ext = extOf(name);
+      log('\\n—', name, '('+ext+')');
+      // preview testuale veloce
+      if (['txt','md'].includes(ext)){
+        const t = await file.text();
+        setPreview('<pre>'+escapeHTML(t.slice(0,5000))+'</pre>');
+        $('#notes').value = ($('#notes').value ? $('#notes').value + '\\n---\\n' : '') + t;
+        continue;
       }
 
-      // reset input per poter ricaricare gli stessi file
-      $('#uploader').value = '';
+      // per tutto il resto carico su /api/upload, poi estraggo/trascrivo
+      const url = await upload(file);
+
+      if (['pdf','docx'].includes(ext)){
+        const text = await extract(url, name);
+        setPreview('<pre>'+escapeHTML(text.slice(0,5000))+'</pre>');
+        $('#notes').value = ($('#notes').value ? $('#notes').value + '\\n---\\n' : '') + text;
+      } else if (['mp3','m4a','wav','ogg','webm'].includes(ext)){
+        const text = await transcribe(url);
+        setPreview('<pre>'+escapeHTML(text.slice(0,5000))+'</pre>');
+        $('#notes').value = ($('#notes').value ? $('#notes').value + '\\n---\\n' : '') + text;
+      } else {
+        setPreview('<p class="text-slate-500">Formato non gestito: '+ext+'</p>');
+      }
+    } catch(e){
+      log('ERRORE:', e.message || e);
+      alert(e.message || 'Errore');
     }
+  }
+}
 
-    // ---------- Eventi UI ----------
-    $('#btnUpload').addEventListener('click', () => $('#uploader').click());
-    $('#uploader').addEventListener('change', (e) => {
-      const files = Array.from(e.target.files || []);
-      if (files.length) handleFiles(files);
+async function generateMinutes(){
+  const notes = $('#notes').value.trim();
+  if (!notes) { alert('Inserisci o carica degli appunti prima.'); return; }
+  $('#btnGenerate').disabled = true; $('#btnGenerate').textContent = 'Genero…';
+  try{
+    log('POST /api/minutes…');
+    const r = await fetch('/api/minutes', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ notes })
     });
+    const j = await r.json().catch(()=> ({}));
+    log('   status', r.status, JSON.stringify(j).slice(0,200)+'…');
+    if (!r.ok) throw new Error(j?.message || 'Errore generazione');
+    $('#result').textContent = j?.verbale || '(vuoto)';
+  } catch(e){
+    alert(e.message || 'Errore generazione');
+  } finally {
+    $('#btnGenerate').disabled = false; $('#btnGenerate').textContent = 'Genera verbale';
+  }
+}
 
-    // drag & drop
-    ;['dragenter','dragover'].forEach(ev =>
-      dropEl.addEventListener(ev, e => { e.preventDefault(); dropEl.classList.add('is-over'); })
-    );
-    ;['dragleave','drop'].forEach(ev =>
-      dropEl.addEventListener(ev, e => { e.preventDefault(); dropEl.classList.remove('is-over'); })
-    );
-    dropEl.addEventListener('drop', e => {
-      const files = [...(e.dataTransfer?.files||[])];
-      if (files.length) handleFiles(files);
-    });
+$('#uploader').addEventListener('change', (e) => {
+  const files = Array.from(e.target.files || []);
+  if (files.length) handleFiles(files);
+});
 
-    $('#btnClearPreview').addEventListener('click', () => setPreviewHTML(''));
-    $('#btnClearQueue').addEventListener('click', clearQueue);
-
-    $('#btnClean').addEventListener('click', () => {
-      $('#notes').value = cleanText($('#notes').value);
-    });
-
-    $('#btnReset').addEventListener('click', () => {
-      $('#notes').value = '';
-      setPreviewHTML('');
-      clearQueue();
-    });
-
-    $('#btnCopy').addEventListener('click', async () => {
-      const t = $('#notes').value;
-      if (!t) return;
-      try { await navigator.clipboard.writeText(t); alert('Copiato!'); }
-      catch { alert('Impossibile copiare'); }
-    });
-
-    $('#btnDownload').addEventListener('click', () => {
-      const t = $('#notes').value;
-      if (!t) return;
-      const blob = new Blob([t], { type: 'text/plain;charset=utf-8' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `appunti_${new Date().toISOString().split('T')[0]}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(a.href);
-    });
-
-    // avvio
-    health();
-  </script>
+$('#btnClearPreview').addEventListener('click', () => setPreview(''));
+$('#btnGenerate').addEventListener('click', generateMinutes);
+$('#btnReset').addEventListener('click', () => {
+  $('#notes').value = '';
+  $('#result').textContent = 'Il verbale comparirà qui…';
+  setPreview('');
+});
+$('#btnCopy').addEventListener('click', async () => {
+  const t = $('#result').textContent;
+  if (!t || t.startsWith('Il verbale')) return;
+  await navigator.clipboard.writeText(t);
+  alert('Copiato!');
+});
+$('#btnDownload').addEventListener('click', () => {
+  const t = $('#result').textContent;
+  if (!t || t.startsWith('Il verbale')) return;
+  const blob = new Blob([t], { type: 'text/markdown;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `verbale_${new Date().toISOString().split('T')[0]}.md`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+</script>
 </body>
 </html>
