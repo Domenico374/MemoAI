@@ -1,45 +1,71 @@
-<!doctype html>
-<meta charset="utf-8"/>
-<title>Upload Test</title>
-<h1>Upload Test – API</h1>
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <title>Upload Test — Vercel Blob</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial; padding: 20px; }
+    pre { background:#f6f7f9; border:1px solid #e5e7eb; padding:12px; border-radius:8px; white-space:pre-wrap; }
+    button, input[type=file] { padding:6px 10px; }
+  </style>
+</head>
+<body>
+  <h1>Upload Test – Vercel Blob</h1>
 
-<input type="file" id="file">
-<button id="go">Carica</button>
+  <input id="file" type="file" />
+  <button id="go">Carica</button>
 
-<h3>Risposta</h3>
-<pre id="out" style="background:#f5f5f5;padding:12px;border-radius:8px;white-space:pre-wrap;"></pre>
+  <h3>Risposta</h3>
+  <pre id="out">—</pre>
 
-<script>
-const out = document.getElementById('out');
-function log(...a){ out.textContent += a.join(' ') + "\n"; }
+  <script>
+    const $ = s => document.querySelector(s);
+    const out = $('#out');
 
-document.getElementById('go').onclick = async () => {
-  out.textContent = '';
-  const file = document.getElementById('file').files[0];
-  if (!file) { log('Seleziona un file'); return; }
+    function log(...a){ out.textContent += a.join(' ') + '\n'; }
+    function reset(){ out.textContent = ''; }
 
-  // 1) /api/upload
-  const fd = new FormData();
-  fd.append('file', file, file.name);
-  fd.append('contentType', file.type || 'application/octet-stream');
+    $('#go').addEventListener('click', async () => {
+      reset();
+      const file = $('#file').files?.[0];
+      if (!file) return log('Seleziona un file.');
 
-  log('1) POST /api/upload …');
-  const r1 = await fetch('/api/upload', { method: 'POST', body: fd });
-  log('   HTTP', r1.status);
-  const j1 = await r1.json().catch(()=> ({}));
-  log(JSON.stringify(j1, null, 2));
+      try {
+        // 1) POST diretto a /api/upload
+        log('1) POST /api/upload …');
+        const fd = new FormData();
+        fd.append('file', file, file.name);
+        fd.append('contentType', file.type || 'application/octet-stream');
 
-  // 2) /api/extract (se ho url dal passo 1)
-  if (j1 && j1.url) {
-    log('\n2) POST /api/extract …');
-    const r2 = await fetch('/api/extract', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ fileUrl: j1.url, fileName: file.name })
+        const r = await fetch('/api/upload', { method: 'POST', body: fd });
+        const j = await r.json().catch(() => ({}));
+        log('status:', r.status, r.ok ? 'OK' : 'ERROR');
+        log(JSON.stringify(j, null, 2));
+
+        const url = j?.data?.url || j?.url;
+        if (!r.ok || !url) {
+          log('\n⛔ Upload non riuscito o URL mancante.');
+          return;
+        }
+
+        // 2) (facoltativo) prova estrazione testo con /api/extract
+        log('\n2) POST /api/extract …');
+        const r2 = await fetch('/api/extract', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileUrl: url, fileName: file.name })
+        });
+        const j2 = await r2.json().catch(() => ({}));
+        log('status:', r2.status, r2.ok ? 'OK' : 'ERROR');
+        if (j2?.text) {
+          log('Estratto (prime 400c):\n' + j2.text.slice(0, 400) + (j2.text.length > 400 ? '…' : ''));
+        } else {
+          log(JSON.stringify(j2, null, 2));
+        }
+      } catch (e) {
+        log('Eccezione:', e?.message || e);
+      }
     });
-    log('   HTTP', r2.status);
-    const j2 = await r2.json().catch(()=> ({}));
-    log(JSON.stringify(j2, null, 2));
-  }
-};
-</script>
+  </script>
+</body>
+</html>
