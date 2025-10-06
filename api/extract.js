@@ -1,131 +1,51 @@
-import * as mammoth from "mammoth";
-import pdfParse from "pdf-parse/lib/pdf-parse.js";
+// pages/api/extract.js
+import { Buffer } from "node:buffer";
+import mammoth from "mammoth";
 
-export const runtime = "nodejs";
-const MAX_BYTES = 120 * 1024 * 1024;
-
-function normalizeText(s = "") {
-  return String(s)
-    .replace(/\u0000/g, "")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-function decodeEntities(s = "") {
-  const basic = { "&nbsp;": " ", "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'" };
-  s = s.replace(/(&nbsp;|&amp;|&lt;|&gt;|&quot;|&#39;)/g, (m) => basic[m] || m);
-  s = s.replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16)));
-  s = s.replace(/&#(\d+);/g, (_, d) => String.fromCharCode(parseInt(d, 10)));
-  return s;
-}
-function htmlToText(html = "") {
-  return normalizeText(
-    decodeEntities(
-      String(html)
-        .replace(/<style[\s\S]*?<\/style>/gi, " ")
-        .replace(/<script[\s\S]*?<\/script>/gi, " ")
-        .replace(/<br\s*\/?>/gi, "\n")
-        .replace(/<\/p>/gi, "\n")
-        .replace(/<\/(h[1-6]|li|tr)>/gi, "\n")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/[ \t]+\n/g, "\n")
-        .replace(/[ \t]{2,}/g, " ")
-    )
-  );
-}
-function parseDataURL(dataURL) {
-  const m = /^data:([^;]+);base64,(.+)$/s.exec(dataURL || "");
-  if (!m) return null;
-  return { mime: m[1], buffer: Buffer.from(m[2], "base64") };
-}
-async function fetchFileBuffer(fileUrl) {
-  const resp = await fetch(fileUrl);
-  if (!resp.ok) throw new Error(`Download fallito (${resp.status})`);
-  const ab = await resp.arrayBuffer();
-  return Buffer.from(ab);
-}
+let pdfParse;
+try { pdfParse = (await import("pdf-parse")).default; } catch { /* opzionale */ }
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS, GET");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method === "GET") return res.status(200).json({ ok: true, route: "/api/extract" });
-  if (req.method !== "POST") return res.status(405).json({ message: "POST only" });
+  if (req.method !== "POST") return res.status(405).json({ ok:false, error:"Method not allowed" });
 
   try {
-    const { dataURL, fileUrl, fileName } = req.body || {};
-    let buffer, mime, ext;
+    const { fileUrl, fileName = "" } = req.body || {};
+    if (!fileUrl) return res.status(400).json({ ok:false, error:"fileUrl mancante" });
 
-    if (fileUrl) {
-      buffer = await fetchFileBuffer(fileUrl);
-      try {
-        mime = (await fetch(fileUrl, { method: "HEAD" })).headers.get("content-type") || "";
-      } catch {}
-      const name = (fileName || fileUrl).toLowerCase();
-      ext = name.includes(".") ? name.split(".").pop() : "";
-    } else if (dataURL) {
-      const parsed = parseDataURL(dataURL);
-      if (!parsed) return res.status(400).json({ message: "dataURL non valido" });
-      mime = parsed.mime;
-      buffer = parsed.buffer;
-      const name = (fileName || "").toLowerCase();
-      ext = name.includes(".") ? name.split(".").pop() : "";
-    } else {
-      return res.status(400).json({ message: "Fornisci fileUrl o dataURL" });
-    }
-
-    if (!buffer?.length) return res.status(400).json({ message: "Buffer vuoto" });
-    if (buffer.length > MAX_BYTES) return res.status(413).json({ message: "File troppo grande" });
-
-    if (!ext) {
-      if ((mime || "").includes("word")) ext = "docx";
-      else if ((mime || "").includes("pdf")) ext = "pdf";
-      else if ((mime || "").includes("markdown")) ext = "md";
-      else if ((mime || "").includes("text")) ext = "txt";
-    }
+    // Scarica/decodifica il file
+    const buf = await getBuffer(fileUrl);
+    const ext = (fileName.split(".").pop() || "").toLowerCase();
 
     let text = "";
-
-    if (ext === "docx" || (mime || "").includes("wordprocessingml")) {
-      try {
-        const raw = await mammoth.extractRawText({ buffer });
-        text = raw?.value || "";
-        if (!text || text.trim().length < 5) {
-          const htmlRes = await mammoth.convertToHtml({ buffer });
-          const fallback = htmlToText(htmlRes?.value || "");
-          if (fallback) text = fallback;
-        }
-        if (!text) return res.status(422).json({ message: "DOCX senza testo estraibile" });
-      } catch (e) {
-        return res.status(500).json({ message: "Errore estrazione DOCX", detail: e.message });
-      }
-    } else if (ext === "pdf" || (mime || "").includes("pdf")) {
-      try {
-        const r = await pdfParse(buffer);
-        text = r?.text || "";
-      } catch {
-        return res.status(415).json({ message: "PDF non testuale o protetto" });
-      }
-      if (!text.trim()) {
-        return res.status(422).json({ message: "PDF senza testo estraibile", detail: "Sembra una scansione (serve OCR)" });
-      }
-    } else if (ext === "md" || ext === "txt" || (mime || "").includes("text")) {
-      text = buffer.toString("utf-8");
+    if (ext === "pdf") {
+      if (!pdfParse) throw new Error("pdf-parse non installato");
+      const out = await pdfParse(buf);
+      text = (out && out.text) || "";
+    } else if (ext === "docx") {
+      const out = await mammoth.extractRawText({ buffer: buf });
+      text = (out && out.value) || "";
     } else {
-      return res.status(400).json({
-        message: "Estensione/MIME non supportati",
-        detail: `Ext: ${ext || "?"} · MIME: ${mime}`,
-        supported: ["docx", "pdf", "txt", "md"]
-      });
+      return res.status(415).json({ ok:false, error:`Formato non supportato: ${ext}` });
     }
 
-    text = normalizeText(text);
-    if (!text) return res.status(422).json({ message: "Testo vuoto dopo estrazione" });
-
-    return res.status(200).json({ ok: true, text, meta: { mime, ext, size: buffer.length } });
+    return res.status(200).json({ ok:true, text });
   } catch (e) {
-    return res.status(500).json({ message: "Errore estrazione", detail: e.message });
+    console.error("extract error:", e);
+    return res.status(500).json({ ok:false, error: e.message || "Errore estrazione" });
   }
+}
+
+async function getBuffer(url) {
+  if (url.startsWith("data:")) {
+    const b64 = url.split(",")[1] || "";
+    return Buffer.from(b64, "base64");
+  }
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`download fallito: ${r.status}`);
+  const ab = await r.arrayBuffer();
+  return Buffer.from(ab);
 }
