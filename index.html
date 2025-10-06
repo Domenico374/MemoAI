@@ -4,10 +4,21 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Memo AI</title>
+
+  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
+
   <!-- Fallback client-side: PDF & DOCX -->
   <script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script>
+    // worker per PDF.js
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+    }
+  </script>
   <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
+
   <style>
     body { background:#f5f7fb }
     #log { white-space:pre-wrap; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace }
@@ -37,6 +48,9 @@
                accept=".pdf,.docx,.txt,.md,.mp3,.m4a,.wav,.ogg,.webm"
                class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200" />
       </div>
+
+      <!-- Coda caricamenti -->
+      <div id="fileQueue" class="mt-4 space-y-2"></div>
     </section>
 
     <!-- ANTEPRIMA -->
@@ -109,3 +123,7 @@
         class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm leading-6"
         placeholder="Il verbale comparirà qui..."></textarea>
     </section>
+
+    <!-- LOG -->
+    <section class="bg-white rounded-2xl shadow p-5 mt-6">
+      <h2 class="text-lg font-semibold mb-3">Log</h2
