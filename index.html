@@ -7,10 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { background:#f5f7fb }
-    #log {
-      white-space:pre-wrap;
-      font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-    }
+    #log { white-space:pre-wrap; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace }
   </style>
 </head>
 <body class="text-slate-800">
@@ -27,33 +24,7 @@
       </div>
     </header>
 
-    <!-- UPLOAD -->
-    <section class="bg-white rounded-2xl shadow p-5 mb-6">
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <h2 class="text-lg font-semibold">Carica file</h2>
-          <p class="text-xs text-slate-500 mt-1">PDF, DOCX, TXT/MD, MP3/M4A/WAV/OGG/WEBM</p>
-        </div>
-        <input id="uploader" type="file" multiple
-               accept=".pdf,.docx,.txt,.md,.mp3,.m4a,.wav,.ogg,.webm"
-               class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200" />
-      </div>
-    </section>
-
-    <!-- ANTEPRIMA -->
-    <section class="bg-white rounded-2xl shadow p-5 mb-6">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold">Anteprima</h2>
-        <button id="btnClearPreview"
-                class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Pulisci anteprima</button>
-      </div>
-      <div id="preview"
-           class="prose max-w-none border border-slate-200 rounded-xl p-4 bg-slate-50 text-sm">
-        <p class="text-slate-500">L'anteprima comparirà qui…</p>
-      </div>
-    </section>
-
-    <!-- METADATA -->
+    <!-- INFO -->
     <section class="bg-white rounded-2xl shadow p-5 mb-6">
       <h2 class="text-lg font-semibold mb-3">Informazioni riunione (opzionale)</h2>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -119,11 +90,91 @@
   </div>
 
 <script>
-const $ = s => document.querySelector(s);
-const logEl = $('#log');
-function log(...a){ logEl.textContent += '\\n' + a.join(' '); }
+(function(){
+  const $ = s => document.querySelector(s);
+  const logEl = document.getElementById('log');
+  function log(...a){ logEl.textContent += '\\n' + a.join(' '); }
 
-// salva in locale
-function saveToLocal(){
-  const data = {
-    not
+  // Generazione verbale
+  async function generateMinutes(){
+    const notes = $('#notes').value.trim();
+    if (!notes) { alert('Inserisci o carica degli appunti prima.'); return; }
+
+    const btn = $('#btnGenerate');
+    btn.disabled = true; btn.textContent = 'Genero…';
+
+    try {
+      const body = {
+        notes,
+        meetingDate: $('#meetingDate').value,
+        participants: $('#participants').value,
+        subject: $('#subject').value,
+        formatoVerbale: $('#template').value
+      };
+
+      log('➡ POST /api/minutes', JSON.stringify(body).slice(0,150)+'…');
+      const r = await fetch('/api/minutes', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(body)
+      });
+      const raw = await r.text();
+      log('⬅ /api/minutes', r.status, raw.slice(0,200)+'…');
+
+      let j={};
+      try { j = JSON.parse(raw); } catch(e) {}
+      if (!r.ok) throw new Error(j.error || raw);
+      $('#result').value = j.verbale || '(vuoto)';
+      saveToLocal();
+    } catch(e){
+      alert(e.message || 'Errore generazione');
+      log('❌', e.message);
+    } finally {
+      btn.disabled=false; btn.textContent='Genera verbale';
+    }
+  }
+
+  // Local save/load
+  function saveToLocal(){
+    const data = {
+      notes: $('#notes').value,
+      result: $('#result').value,
+      meetingDate: $('#meetingDate').value,
+      subject: $('#subject').value,
+      participants: $('#participants').value,
+      template: $('#template').value,
+      timestamp: new Date().toISOString()
+    };
+    localStorage.setItem('memoai_last', JSON.stringify(data));
+    log('💾 Salvato in locale');
+  }
+  function loadFromLocal(){
+    const saved = localStorage.getItem('memoai_last');
+    if(!saved) return alert('Nessun dato salvato');
+    const d=JSON.parse(saved);
+    $('#notes').value=d.notes||''; $('#result').value=d.result||'';
+    $('#meetingDate').value=d.meetingDate||''; $('#subject').value=d.subject||'';
+    $('#participants').value=d.participants||''; $('#template').value=d.template||'standard';
+    alert('Dati caricati!');
+  }
+
+  // Utility
+  $('#btnGenerate').onclick = generateMinutes;
+  $('#btnLoadLast').onclick = loadFromLocal;
+  $('#btnReset').onclick = ()=>{ ['notes','result','meetingDate','subject','participants'].forEach(id=>$('#'+id).value=''); };
+  $('#btnCopy').onclick = async()=>{ const t=$('#result').value; if(t) await navigator.clipboard.writeText(t); alert('Copiato!'); };
+  $('#btnDownload').onclick = ()=>{ const t=$('#result').value; if(!t)return; const blob=new Blob([t],{type:'text/markdown'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='verbale_'+new Date().toISOString().split('T')[0]+'.md'; a.click(); URL.revokeObjectURL(a.href); };
+  ['notes','result','meetingDate','subject','participants'].forEach(id=>$('#'+id).addEventListener('input',saveToLocal));
+  $('#template').addEventListener('change',saveToLocal);
+
+  // Self-test
+  fetch('/api/minutes')
+    .then(r=>r.text())
+    .then(t=>log('🩺 Ping /api/minutes OK:', t.slice(0,200)))
+    .catch(e=>log('Ping errore:', e.message||e));
+
+  log('✅ Script caricato.');
+})();
+</script>
+</body>
+</html>
