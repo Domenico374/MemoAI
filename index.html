@@ -1,116 +1,49 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Memo AI</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>Test Minutes</title>
   <style>
-    body { background: #f5f7fb }
-    #log { 
-      white-space: pre-wrap; 
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace 
-    }
+    body{font-family:system-ui,Arial;margin:2rem}
+    textarea,input,button{font-size:16px}
+    pre{background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;white-space:pre-wrap}
   </style>
 </head>
-<body class="text-slate-800">
-  <div class="max-w-4xl mx-auto p-6">
+<body>
+  <h1>Test /api/minutes</h1>
+  <p>Scrivi due righe di appunti e premi “Genera”.</p>
 
-    <!-- HEADER -->
-    <header class="mb-6 flex items-center gap-4">
-      <img src="https://raw.githubusercontent.com/Domenico374/domenico374.github.io/main/img/logo-memoai.png" 
-           alt="Memo AI Logo" 
-           class="h-16 w-auto">
-      <div>
-        <h1 class="text-3xl font-bold">Memo AI</h1>
-        <p class="text-sm text-slate-600">Carica PDF/DOCX/TXT/MD o Audio → Estrazione/Trascrizione → Verbale</p>
-      </div>
-    </header>
+  <label>Oggetto <input id="subject" placeholder="Allineamento Q4" /></label><br/><br/>
+  <textarea id="notes" rows="8" cols="80" placeholder="- punto 1&#10;- decisione: procedere&#10;- KPI: lead settimanali 30"></textarea><br/><br/>
+  <button id="go">Genera</button>
 
-    <!-- UPLOAD -->
-    <section class="bg-white rounded-2xl shadow p-5 mb-6">
-      <div class="flex items-start justify-between gap-3">
-        <div>
-          <h2 class="text-lg font-semibold">Carica file</h2>
-          <p class="text-xs text-slate-500 mt-1">PDF, DOCX, TXT/MD, MP3/M4A/WAV/OGG/WEBM</p>
-        </div>
-        <input id="uploader" type="file" multiple
-               accept=".pdf,.docx,.txt,.md,.mp3,.m4a,.wav,.ogg,.webm"
-               class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200" />
-      </div>
-    </section>
+  <h2>Risultato</h2>
+  <pre id="out">(in attesa…)</pre>
 
-    <!-- ANTEPRIMA -->
-    <section class="bg-white rounded-2xl shadow p-5 mb-6">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold">Anteprima</h2>
-        <button id="btnClearPreview" 
-                class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Pulisci anteprima</button>
-      </div>
-      <div id="preview"
-           class="prose max-w-none border border-slate-200 rounded-xl p-4 bg-slate-50 text-sm">
-        <p class="text-slate-500">L'anteprima comparirà qui…</p>
-      </div>
-    </section>
-
-    <!-- METADATA -->
-    <section class="bg-white rounded-2xl shadow p-5 mb-6">
-      <h2 class="text-lg font-semibold mb-3">Informazioni riunione (opzionale)</h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Data riunione</label>
-          <input id="meetingDate" type="date" 
-                 class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Oggetto</label>
-          <input id="subject" type="text" placeholder="Es. Pianificazione Q1 2025"
-                 class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-        <div class="md:col-span-2">
-          <label class="block text-sm font-medium text-slate-700 mb-1">Partecipanti</label>
-          <input id="participants" type="text" placeholder="Es. Mario Rossi, Laura Bianchi, etc."
-                 class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-      </div>
-    </section>
-
-    <!-- APPUNTI -->
-    <section class="bg-white rounded-2xl shadow p-5 mb-6">
-      <h2 class="text-lg font-semibold mb-3">Appunti</h2>
-      <textarea id="notes" rows="12"
-        class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-        placeholder="Appunti trascritti o estratti…"></textarea>
-
-      <div class="mt-4 flex flex-wrap gap-2 items-center">
-        <button id="btnGenerate"
-          class="px-4 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700">
-          Genera verbale
-        </button>
-        <select id="template" 
-                class="px-3 py-2 rounded-lg text-sm border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="standard">Standard</option>
-          <option value="formale">Formale</option>
-          <option value="esecutivo">Esecutivo</option>
-          <option value="tecnico">Tecnico</option>
-          <option value="informale">Informale</option>
-        </select>
-        <button id="btnReset"
-          class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Reset</button>
-        <button id="btnLoadLast"
-          class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Carica ultimo</button>
-      </div>
-    </section>
-
-    <!-- VERBALE -->
-    <section class="bg-white rounded-2xl shadow p-5">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold">Verbale</h2>
-        <div class="flex gap-2">
-          <button id="btnCopy" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Copia</button>
-          <button id="btnDownload" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Scarica .md</button>
-        </div>
-      </div>
-      <textarea id="result" rows="20"
-        class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm leading-6"
-        placeholder="Il verbale comparirà
+<script>
+const $ = s => document.querySelector(s);
+$('#go').onclick = async () => {
+  const body = {
+    notes: $('#notes').value,
+    subject: $('#subject').value,
+    meetingDate: new Date().toISOString().slice(0,10),
+    participants: 'Mario, Laura',
+    formatoVerbale: 'standard'
+  };
+  try{
+    const r = await fetch('/api/minutes', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    const ct = r.headers.get('content-type')||'';
+    const data = ct.includes('application/json') ? await r.json() : await r.text();
+    $('#out').textContent = `HTTP ${r.status}\n\n` + (typeof data==='string' ? data : JSON.stringify(data,null,2));
+  }catch(e){
+    $('#out').textContent = 'ERRORE: ' + (e.message||e);
+  }
+};
+</script>
+</body>
+</html>
