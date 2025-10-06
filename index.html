@@ -16,15 +16,40 @@
     <!-- HEADER -->
     <header class="mb-6 flex items-center gap-4">
       <img src="https://raw.githubusercontent.com/Domenico374/domenico374.github.io/main/img/logo-memoai.png"
-           alt="Memo AI Logo"
-           class="h-16 w-auto">
+           alt="Memo AI Logo" class="h-16 w-auto">
       <div>
         <h1 class="text-3xl font-bold">Memo AI</h1>
         <p class="text-sm text-slate-600">Carica PDF/DOCX/TXT/MD o Audio → Estrazione/Trascrizione → Verbale</p>
       </div>
     </header>
 
-    <!-- INFO -->
+    <!-- CARICA FILE -->
+    <section class="bg-white rounded-2xl shadow p-5 mb-6">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-semibold">Carica file</h2>
+          <p class="text-xs text-slate-500 mt-1">PDF, DOCX, TXT/MD, MP3/M4A/WAV/OGG/WEBM</p>
+        </div>
+        <input id="uploader" type="file" multiple
+               accept=".pdf,.docx,.txt,.md,.mp3,.m4a,.wav,.ogg,.webm"
+               class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200" />
+      </div>
+    </section>
+
+    <!-- ANTEPRIMA -->
+    <section class="bg-white rounded-2xl shadow p-5 mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold">Anteprima</h2>
+        <button id="btnClearPreview"
+                class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Pulisci anteprima</button>
+      </div>
+      <div id="preview"
+           class="prose max-w-none border border-slate-200 rounded-xl p-4 bg-slate-50 text-sm">
+        <p class="text-slate-500">L'anteprima comparirà qui…</p>
+      </div>
+    </section>
+
+    <!-- INFO RIUNIONE -->
     <section class="bg-white rounded-2xl shadow p-5 mb-6">
       <h2 class="text-lg font-semibold mb-3">Informazioni riunione (opzionale)</h2>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -32,149 +57,4 @@
           <label class="block text-sm font-medium text-slate-700 mb-1">Data riunione</label>
           <input id="meetingDate" type="date"
                  class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-slate-700 mb-1">Oggetto</label>
-          <input id="subject" type="text" placeholder="Es. Pianificazione Q1 2025"
-                 class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-        <div class="md:col-span-2">
-          <label class="block text-sm font-medium text-slate-700 mb-1">Partecipanti</label>
-          <input id="participants" type="text" placeholder="Es. Mario Rossi, Laura Bianchi, etc."
-                 class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-        </div>
-      </div>
-    </section>
-
-    <!-- APPUNTI -->
-    <section class="bg-white rounded-2xl shadow p-5 mb-6">
-      <h2 class="text-lg font-semibold mb-3">Appunti</h2>
-      <textarea id="notes" rows="10"
-        class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-        placeholder="Appunti trascritti o estratti…"></textarea>
-
-      <div class="mt-4 flex flex-wrap gap-2 items-center">
-        <button id="btnGenerate"
-          class="px-4 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700">Genera verbale</button>
-        <select id="template" class="px-3 py-2 rounded-lg text-sm border border-gray-300">
-          <option value="standard">Standard</option>
-          <option value="formale">Formale</option>
-          <option value="esecutivo">Esecutivo</option>
-          <option value="tecnico">Tecnico</option>
-          <option value="informale">Informale</option>
-        </select>
-        <button id="btnReset" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Reset</button>
-        <button id="btnLoadLast" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Carica ultimo</button>
-      </div>
-    </section>
-
-    <!-- VERBALE -->
-    <section class="bg-white rounded-2xl shadow p-5">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold">Verbale</h2>
-        <div class="flex gap-2">
-          <button id="btnCopy" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Copia</button>
-          <button id="btnDownload" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Scarica .md</button>
-        </div>
-      </div>
-      <textarea id="result" rows="18"
-        class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm leading-6"
-        placeholder="Il verbale comparirà qui..."></textarea>
-    </section>
-
-    <!-- LOG -->
-    <section class="bg-white rounded-2xl shadow p-5 mt-6">
-      <h2 class="text-lg font-semibold mb-3">Log</h2>
-      <pre id="log" class="text-xs bg-slate-900 text-slate-100 p-3 rounded">pronto…</pre>
-    </section>
-  </div>
-
-<script>
-(function(){
-  const $ = s => document.querySelector(s);
-  const logEl = document.getElementById('log');
-  function log(...a){ logEl.textContent += '\\n' + a.join(' '); }
-
-  // Generazione verbale
-  async function generateMinutes(){
-    const notes = $('#notes').value.trim();
-    if (!notes) { alert('Inserisci o carica degli appunti prima.'); return; }
-
-    const btn = $('#btnGenerate');
-    btn.disabled = true; btn.textContent = 'Genero…';
-
-    try {
-      const body = {
-        notes,
-        meetingDate: $('#meetingDate').value,
-        participants: $('#participants').value,
-        subject: $('#subject').value,
-        formatoVerbale: $('#template').value
-      };
-
-      log('➡ POST /api/minutes', JSON.stringify(body).slice(0,150)+'…');
-      const r = await fetch('/api/minutes', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify(body)
-      });
-      const raw = await r.text();
-      log('⬅ /api/minutes', r.status, raw.slice(0,200)+'…');
-
-      let j={};
-      try { j = JSON.parse(raw); } catch(e) {}
-      if (!r.ok) throw new Error(j.error || raw);
-      $('#result').value = j.verbale || '(vuoto)';
-      saveToLocal();
-    } catch(e){
-      alert(e.message || 'Errore generazione');
-      log('❌', e.message);
-    } finally {
-      btn.disabled=false; btn.textContent='Genera verbale';
-    }
-  }
-
-  // Local save/load
-  function saveToLocal(){
-    const data = {
-      notes: $('#notes').value,
-      result: $('#result').value,
-      meetingDate: $('#meetingDate').value,
-      subject: $('#subject').value,
-      participants: $('#participants').value,
-      template: $('#template').value,
-      timestamp: new Date().toISOString()
-    };
-    localStorage.setItem('memoai_last', JSON.stringify(data));
-    log('💾 Salvato in locale');
-  }
-  function loadFromLocal(){
-    const saved = localStorage.getItem('memoai_last');
-    if(!saved) return alert('Nessun dato salvato');
-    const d=JSON.parse(saved);
-    $('#notes').value=d.notes||''; $('#result').value=d.result||'';
-    $('#meetingDate').value=d.meetingDate||''; $('#subject').value=d.subject||'';
-    $('#participants').value=d.participants||''; $('#template').value=d.template||'standard';
-    alert('Dati caricati!');
-  }
-
-  // Utility
-  $('#btnGenerate').onclick = generateMinutes;
-  $('#btnLoadLast').onclick = loadFromLocal;
-  $('#btnReset').onclick = ()=>{ ['notes','result','meetingDate','subject','participants'].forEach(id=>$('#'+id).value=''); };
-  $('#btnCopy').onclick = async()=>{ const t=$('#result').value; if(t) await navigator.clipboard.writeText(t); alert('Copiato!'); };
-  $('#btnDownload').onclick = ()=>{ const t=$('#result').value; if(!t)return; const blob=new Blob([t],{type:'text/markdown'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='verbale_'+new Date().toISOString().split('T')[0]+'.md'; a.click(); URL.revokeObjectURL(a.href); };
-  ['notes','result','meetingDate','subject','participants'].forEach(id=>$('#'+id).addEventListener('input',saveToLocal));
-  $('#template').addEventListener('change',saveToLocal);
-
-  // Self-test
-  fetch('/api/minutes')
-    .then(r=>r.text())
-    .then(t=>log('🩺 Ping /api/minutes OK:', t.slice(0,200)))
-    .catch(e=>log('Ping errore:', e.message||e));
-
-  log('✅ Script caricato.');
-})();
-</script>
-</body>
-</html>
+        </
