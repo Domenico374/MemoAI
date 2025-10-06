@@ -76,7 +76,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Input non valido", message: "Il campo notes è obbligatorio e deve contenere del testo" });
     }
     if (notes.length >20000) {
-      return res.status(400).json({ error: "Input troppo lungo", message: "Gli appunti non possono superare i 8000 caratteri" });
+     return res.status(400).json({ error: "Input troppo lungo", message: "Gli appunti non possono superare i 20000 caratteri" });
     }
 
     const useOpenAI = !!process.env.OPENAI_API_KEY;
