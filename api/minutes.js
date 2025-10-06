@@ -75,7 +75,7 @@ export default async function handler(req, res) {
     if (!notes || typeof notes !== "string" || notes.trim().length === 0) {
       return res.status(400).json({ error: "Input non valido", message: "Il campo notes è obbligatorio e deve contenere del testo" });
     }
-    if (notes.length > 8000) {
+    if (notes.length >20000) {
       return res.status(400).json({ error: "Input troppo lungo", message: "Gli appunti non possono superare i 8000 caratteri" });
     }
 
