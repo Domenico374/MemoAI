@@ -1,50 +1,40 @@
-import Busboy from "busboy";
+// pages/api/upload.js
+import fs from "node:fs";
+import formidable from "formidable";
 
-export const runtime = "nodejs";
-
-const MAX_BYTES = 12 * 1024 * 1024; // 12MB (alza/abbassa a piacere)
+export const config = { api: { bodyParser: false } };
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "POST") return res.status(405).json({ ok: false, message: "POST only" });
+  if (req.method !== "POST") return res.status(405).json({ ok:false, error:"Method not allowed" });
 
+  const form = formidable({ multiples: false, maxFileSize: 25 * 1024 * 1024 }); // 25MB
   try {
-    const bb = Busboy({ headers: req.headers, limits: { fileSize: MAX_BYTES } });
+    const { files } = await new Promise((resolve, reject) =>
+      form.parse(req, (err, fields, files) => (err ? reject(err) : resolve({ fields, files })))
+    );
+    const file = files.file;
+    if (!file) return res.status(400).json({ ok:false, error:"file mancante" });
 
-    let filename = "file";
-    let mimetype = "application/octet-stream";
-    const chunks = [];
-    let size = 0;
+    const buf = await fs.promises.readFile(file.filepath);
+    const contentType = file.mimetype || "application/octet-stream";
+    const filename = file.originalFilename || "upload.bin";
 
-    bb.on("file", (name, file, info) => {
-      filename = info?.filename || filename;
-      mimetype = info?.mimeType || info?.mimetype || mimetype;
+    // Se hai configurato Vercel Blob, usalo
+    if (process.env.BLOB_READ_WRITE_TOKEN) {
+      const { put } = await import("@vercel/blob");
+      const blob = await put(filename, buf, { access: "public", contentType });
+      return res.status(200).json({ ok: true, url: blob.url, size: buf.length, contentType });
+    }
 
-      file.on("data", (d) => {
-        chunks.push(d);
-        size += d.length;
-      });
-    });
-
-    bb.on("error", (e) => {
-      res.status(500).json({ ok: false, message: e.message });
-    });
-
-    bb.on("finish", () => {
-      const buffer = Buffer.concat(chunks);
-      if (!buffer.length) {
-        return res.status(400).json({ ok: false, message: "Nessun file ricevuto" });
-      }
-      const b64 = buffer.toString("base64");
-      const url = `data:${mimetype};base64,${b64}`;
-      res.status(200).json({ ok: true, url, name: filename, mime: mimetype, size });
-    });
-
-    req.pipe(bb);
+    // Fallback: data URL (va bene per test e file medio-piccoli)
+    const dataUrl = `data:${contentType};base64,${buf.toString("base64")}`;
+    return res.status(200).json({ ok: true, url: dataUrl, size: buf.length, contentType });
   } catch (e) {
-    res.status(500).json({ ok: false, message: e.message });
+    console.error("upload error:", e);
+    return res.status(500).json({ ok:false, error: e.message || "Errore upload" });
   }
 }
