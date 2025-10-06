@@ -39,6 +39,22 @@ function generateLocalMinutes({ notes, meetingDate, participants, subject, forma
   ].join("\n");
 }
 
+/* ---------- Parse JSON body manually ---------- */
+async function parseBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => { body += chunk.toString(); });
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(body));
+      } catch (e) {
+        reject(new Error('Invalid JSON'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
 /* ---------- Handler ---------- */
 export default async function handler(req, res) {
   // CORS
@@ -51,7 +67,9 @@ export default async function handler(req, res) {
   if (req.method !== "POST")  return res.status(405).json({ error: "Method not allowed", message: "Solo richieste POST sono permesse" });
 
   try {
-    const { notes, meetingDate, participants, subject, formatoVerbale } = req.body || {};
+    // Parse body manually
+    const body = await parseBody(req);
+    const { notes, meetingDate, participants, subject, formatoVerbale } = body || {};
 
     // Validazione
     if (!notes || typeof notes !== "string" || notes.trim().length === 0) {
@@ -150,8 +168,7 @@ Formato desiderato: ${formatoVerbale || "standard"}.`;
     console.error("Errore in minutes.js:", error);
     return res.status(500).json({
       error: "Errore interno del server",
-      message: "Si è verificato un errore imprevisto durante la generazione del verbale"
+      message: error.message || "Si è verificato un errore imprevisto durante la generazione del verbale"
     });
   }
 }
-
