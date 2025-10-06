@@ -126,4 +126,266 @@
 
     <!-- LOG -->
     <section class="bg-white rounded-2xl shadow p-5 mt-6">
-      <h2 class="text-lg font-semibold mb-3">Log</h2
+      <h2 class="text-lg font-semibold mb-3">Log</h2>
+      <pre id="log" class="text-xs bg-slate-900 text-slate-100 p-3 rounded">pronto…</pre>
+    </section>
+  </div>
+
+<script>
+(function(){
+  // ---------- helpers ----------
+  const $ = s => document.querySelector(s);
+  const logEl = $('#log');
+  function log(...a){ if (logEl) logEl.textContent += '\\n' + a.join(' '); }
+  function setPreview(html){ $('#preview').innerHTML = html || `<p class="text-slate-500">L'anteprima comparirà qui…</p>`; }
+  function escapeHTML(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function extOf(name){ return (name.split('.').pop()||'').toLowerCase(); }
+
+  // ---------- coda caricamenti ----------
+  const queueEl = document.getElementById('fileQueue');
+  const queueMap = new Map();
+  function fmtSize(b){ if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(1)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
+  function uid(){ return Math.random().toString(36).slice(2)+Date.now().toString(36); }
+  function addQueueItem(file){
+    const id = uid();
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-between border border-slate-200 rounded-lg p-2 text-sm bg-white';
+    row.dataset.id = id;
+    row.innerHTML = `
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="inline-block w-2.5 h-2.5 rounded-full bg-slate-300" data-dot></span>
+        <span class="truncate max-w-[220px]" title="${file.name}">${file.name}</span>
+        <span class="text-xs text-slate-500">· ${fmtSize(file.size||0)}</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <div class="w-40 h-2 bg-slate-100 rounded overflow-hidden">
+          <div class="h-2 bg-blue-500 transition-all" style="width:0%" data-bar></div>
+        </div>
+        <span class="text-xs text-slate-600" data-status>in attesa…</span>
+      </div>`;
+    queueEl?.appendChild(row);
+    const els = {
+      row, dot: row.querySelector('[data-dot]'),
+      bar: row.querySelector('[data-bar]'),
+      status: row.querySelector('[data-status]')
+    };
+    queueMap.set(id, els);
+    return id;
+  }
+  function setQueueState(id, state, text, progress){
+    const els = queueMap.get(id); if(!els) return;
+    if (typeof progress==='number') els.bar.style.width = Math.max(0,Math.min(100,progress))+'%';
+    if (text) els.status.textContent = text;
+    const colors = { queued:'bg-slate-300', uploading:'bg-blue-400', processing:'bg-amber-400', done:'bg-emerald-500', error:'bg-rose-500' };
+    els.dot.className = 'inline-block w-2.5 h-2.5 rounded-full ' + (colors[state] || 'bg-slate-300');
+  }
+
+  // ---------- localStorage ----------
+  function saveToLocal(){
+    const data = {
+      notes: $('#notes').value,
+      result: $('#result').value,
+      meetingDate: $('#meetingDate').value,
+      subject: $('#subject').value,
+      participants: $('#participants').value,
+      template: $('#template')?.value || 'standard',
+      timestamp: new Date().toISOString()
+    };
+    localStorage.setItem('memoai_last', JSON.stringify(data));
+    log('💾 Salvato in locale');
+  }
+  function loadFromLocal(){
+    const s = localStorage.getItem('memoai_last');
+    if(!s) return alert('Nessun dato salvato');
+    const d = JSON.parse(s);
+    $('#notes').value=d.notes||''; $('#result').value=d.result||'';
+    $('#meetingDate').value=d.meetingDate||''; $('#subject').value=d.subject||'';
+    $('#participants').value=d.participants||''; if($('#template')) $('#template').value=d.template||'standard';
+    alert('Dati caricati!');
+  }
+  ['notes','result','meetingDate','subject','participants'].forEach(id=>$('#'+id)?.addEventListener('input',saveToLocal));
+  $('#template')?.addEventListener('change',saveToLocal);
+
+  // ---------- API helpers ----------
+  async function fetchJSON(url, options){
+    const r = await fetch(url, options);
+    const ct = r.headers.get('content-type') || '';
+    const body = ct.includes('application/json') ? await r.json().catch(()=> ({})) : await r.text();
+    log('↩', url, 'status', r.status, typeof body === 'string' ? body.slice(0,160)+'…' : JSON.stringify(body).slice(0,160)+'…');
+    if (!r.ok) throw new Error((body && (body.error||body.message)) || ('HTTP '+r.status));
+    return body;
+  }
+
+  // upload con progresso (XHR per avere onprogress)
+  function upload(file, onProgress){
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST','/api/upload');
+      xhr.upload.onprogress = (e)=>{ if(e.lengthComputable && typeof onProgress==='function'){ onProgress(Math.round((e.loaded/e.total)*100)); } };
+      xhr.onload = ()=> {
+        let j=null; try{ j=JSON.parse(xhr.responseText); }catch{}
+        if (xhr.status>=200 && xhr.status<300 && j && j.url) return resolve(j.url);
+        return reject(new Error((j && (j.error||j.message)) || 'Upload fallito'));
+      };
+      xhr.onerror = ()=> reject(new Error('Errore di rete durante l’upload'));
+      const fd = new FormData();
+      fd.append('file', file, file.name||'file');
+      fd.append('contentType', file.type||'application/octet-stream');
+      xhr.send(fd);
+    });
+  }
+  async function extract(url, name){
+    return (await fetchJSON('/api/extract', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ fileUrl:url, fileName:name })
+    })).text || '';
+  }
+  async function transcribe(url){
+    return (await fetchJSON('/api/transcribe-audio', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ url })
+    })).text || '';
+  }
+
+  // ---------- Fallback client-side ----------
+  async function extractPdfClient(file){
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    const max = Math.min(pdf.numPages, 5);
+    let text = '';
+    for(let i=1;i<=max;i++){
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map(it=>it.str).join(' ') + '\\n\\n';
+    }
+    return text.trim();
+  }
+  async function extractDocxClient(file){
+    const buf = await file.arrayBuffer();
+    const res = await window.mammoth.extractRawText({ arrayBuffer: buf });
+    return (res && res.value) ? res.value.trim() : '';
+  }
+
+  // ---------- Gestione file ----------
+  async function handleFiles(files){
+    for (const file of files){
+      const name = file.name || 'file';
+      const ext  = extOf(name);
+      const id   = addQueueItem(file);
+
+      try {
+        setQueueState(id,'queued','in attesa…',0);
+
+        // TXT/MD locale
+        if (['txt','md'].includes(ext)){
+          setQueueState(id,'processing','import locale…',30);
+          const t = await file.text();
+          setPreview('<pre>'+escapeHTML(t.slice(0,5000))+'</pre>');
+          $('#notes').value = ($('#notes').value ? $('#notes').value + '\\n---\\n' : '') + t;
+          saveToLocal();
+          setQueueState(id,'done','completato',100);
+          continue;
+        }
+
+        // Upload + backend
+        setQueueState(id,'uploading','caricamento…',5);
+        const url = await upload(file, p=>setQueueState(id,'uploading',`caricamento… ${p}%`,p));
+        setQueueState(id,'processing','elaborazione…',60);
+
+        if (['pdf','docx'].includes(ext)){
+          let text = '';
+          try {
+            text = await extract(url, name);
+          } catch (e) {
+            log('⚠️ backend extract non disponibile, uso fallback client:', e.message);
+            text = ext==='pdf' ? await extractPdfClient(file) : await extractDocxClient(file);
+          }
+          setPreview('<pre>'+escapeHTML(text.slice(0,5000))+'</pre>');
+          $('#notes').value = ($('#notes').value ? $('#notes').value + '\\n---\\n' : '') + text;
+          saveToLocal();
+          setQueueState(id,'done','completato',100);
+        } else if (['mp3','m4a','wav','ogg','webm'].includes(ext)){
+          const text = await transcribe(url);
+          setPreview('<pre>'+escapeHTML(text.slice(0,5000))+'</pre>');
+          $('#notes').value = ($('#notes').value ? $('#notes').value + '\\n---\\n' : '') + text;
+          saveToLocal();
+          setQueueState(id,'done','completato',100);
+        } else {
+          setQueueState(id,'error',`formato non gestito: ${ext}`,100);
+        }
+      } catch (e){
+        setQueueState(id,'error', e.message || 'errore', 100);
+        alert(e.message || 'Errore durante il caricamento');
+      }
+    }
+  }
+
+  // ---------- Generazione verbale ----------
+  async function generateMinutes(){
+    const notes = $('#notes').value.trim();
+    if (!notes) return alert('Inserisci o carica degli appunti prima.');
+    const btn = $('#btnGenerate'); btn.disabled = true; btn.textContent = 'Genero…';
+
+    try {
+      const payload = {
+        notes,
+        meetingDate: $('#meetingDate').value,
+        participants: $('#participants').value,
+        subject: $('#subject').value,
+        formatoVerbale: $('#template')?.value || 'standard'
+      };
+      log('➡ POST /api/minutes', JSON.stringify(payload).slice(0,160)+'…');
+
+      const r = await fetch('/api/minutes', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const raw = await r.text();
+      log('⬅ /api/minutes', r.status, raw.slice(0,200)+'…');
+
+      let j = {}; try { j = JSON.parse(raw); } catch {}
+      if (!r.ok) throw new Error(j.error || raw || 'Errore generazione');
+      $('#result').value = j.verbale || '(vuoto)';
+      saveToLocal();
+    } catch(e){
+      alert(e.message || 'Errore generazione'); log('❌', e.message);
+    } finally {
+      btn.disabled = false; btn.textContent = 'Genera verbale';
+    }
+  }
+
+  // ---------- Eventi UI ----------
+  $('#uploader')?.addEventListener('change', (e)=>{
+    const files = Array.from(e.target.files||[]);
+    if (files.length) handleFiles(files);
+  });
+  $('#btnClearPreview')?.addEventListener('click', () => setPreview(''));
+  $('#btnGenerate').addEventListener('click', generateMinutes);
+  $('#btnLoadLast').addEventListener('click', loadFromLocal);
+  $('#btnReset').addEventListener('click', ()=>{
+    ['notes','result','meetingDate','subject','participants'].forEach(id=>$('#'+id).value='');
+    setPreview('');
+  });
+  $('#btnCopy').addEventListener('click', async ()=>{
+    const t = $('#result').value; if(!t) return;
+    await navigator.clipboard.writeText(t); alert('Copiato!');
+  });
+  $('#btnDownload').addEventListener('click', ()=>{
+    const t = $('#result').value; if(!t) return;
+    const blob = new Blob([t], { type:'text/markdown;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `verbale_${new Date().toISOString().split('T')[0]}.md`;
+    a.click(); URL.revokeObjectURL(a.href);
+  });
+
+  // ---------- Self test ----------
+  fetch('/api/minutes')
+    .then(r=>r.text())
+    .then(t=>log('🩺 Ping /api/minutes OK:', t.slice(0,200)))
+    .catch(e=>log('Ping errore:', e.message||e));
+  log('✅ Script caricato.');
+})();
+</script>
+</body>
+</html>
