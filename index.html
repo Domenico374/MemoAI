@@ -45,7 +45,29 @@
       </div>
       <div id="preview"
            class="prose max-w-none border border-slate-200 rounded-xl p-4 bg-slate-50 text-sm">
-        <p class="text-slate-500">L’anteprima comparirà qui…</p>
+        <p class="text-slate-500">L'anteprima comparirà qui…</p>
+      </div>
+    </section>
+
+    <!-- Metadata -->
+    <section class="bg-white rounded-2xl shadow p-5 mb-6">
+      <h2 class="text-lg font-semibold mb-3">Informazioni riunione (opzionale)</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Data riunione</label>
+          <input id="meetingDate" type="date" 
+                 class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Oggetto</label>
+          <input id="subject" type="text" placeholder="Es. Pianificazione Q1 2025"
+                 class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div class="md:col-span-2">
+          <label class="block text-sm font-medium text-slate-700 mb-1">Partecipanti</label>
+          <input id="participants" type="text" placeholder="Es. Mario Rossi, Laura Bianchi, etc."
+                 class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
       </div>
     </section>
 
@@ -56,14 +78,25 @@
         class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         placeholder="Appunti trascritti o estratti…"></textarea>
 
-      <div class="mt-4 flex flex-wrap gap-2">
+      <div class="mt-4 flex flex-wrap gap-2 items-center">
         <button id="btnGenerate"
-          class="px-3 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700">
+          class="px-4 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700">
           Genera verbale
         </button>
+        <select id="template" class="px-3 py-2 rounded-lg text-sm border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="standard">Standard</option>
+          <option value="formale">Formale</option>
+          <option value="esecutivo">Esecutivo</option>
+          <option value="tecnico">Tecnico</option>
+          <option value="informale">Informale</option>
+        </select>
         <button id="btnReset"
           class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">
           Reset
+        </button>
+        <button id="btnLoadLast"
+          class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">
+          Carica ultimo
         </button>
       </div>
     </section>
@@ -77,7 +110,9 @@
           <button id="btnDownload" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Scarica .md</button>
         </div>
       </div>
-      <pre id="result" class="whitespace-pre-wrap text-sm leading-6 text-slate-800">Il verbale comparirà qui…</pre>
+      <textarea id="result" rows="20"
+        class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm leading-6"
+        placeholder="Il verbale comparirà qui..."></textarea>
     </section>
 
     <!-- Log -->
@@ -90,10 +125,49 @@
 <script>
 const $ = (s) => document.querySelector(s);
 const logEl = $('#log');
-function log(...a){ logEl.textContent += '\\n' + a.join(' '); }
+function log(...a){ logEl.textContent += '\n' + a.join(' '); }
+
+// Salvataggio automatico localStorage
+function saveToLocal(){
+  const data = {
+    notes: $('#notes').value,
+    verbale: $('#result').value,
+    meetingDate: $('#meetingDate').value,
+    subject: $('#subject').value,
+    participants: $('#participants').value,
+    template: $('#template').value,
+    timestamp: new Date().toISOString()
+  };
+  localStorage.setItem('memoai_last', JSON.stringify(data));
+  log('💾 Salvato in locale');
+}
+
+function loadFromLocal(){
+  try {
+    const saved = localStorage.getItem('memoai_last');
+    if (!saved) { alert('Nessun dato salvato trovato'); return; }
+    const data = JSON.parse(saved);
+    $('#notes').value = data.notes || '';
+    $('#result').value = data.verbale || '';
+    $('#meetingDate').value = data.meetingDate || '';
+    $('#subject').value = data.subject || '';
+    $('#participants').value = data.participants || '';
+    $('#template').value = data.template || 'standard';
+    log('📂 Caricato da locale (salvato il ' + new Date(data.timestamp).toLocaleString('it-IT') + ')');
+    alert('Dati ripristinati con successo!');
+  } catch(e) {
+    alert('Errore nel caricamento: ' + e.message);
+  }
+}
+
+// Auto-save ogni volta che l'utente modifica qualcosa
+['notes', 'result', 'meetingDate', 'subject', 'participants'].forEach(id => {
+  $(`#${id}`).addEventListener('input', saveToLocal);
+});
+$('#template').addEventListener('change', saveToLocal);
 
 function setPreview(html){
-  $('#preview').innerHTML = html || '<p class="text-slate-500">L’anteprima comparirà qui…</p>';
+  $('#preview').innerHTML = html || '<p class="text-slate-500">L'anteprima comparirà qui…</p>';
 }
 
 function escapeHTML(s){
@@ -146,26 +220,28 @@ async function handleFiles(files){
     try{
       const name = file.name || 'file';
       const ext = extOf(name);
-      log('\\n—', name, '('+ext+')');
-      // preview testuale veloce
+      log('\n—', name, '('+ext+')');
+      
       if (['txt','md'].includes(ext)){
         const t = await file.text();
         setPreview('<pre>'+escapeHTML(t.slice(0,5000))+'</pre>');
-        $('#notes').value = ($('#notes').value ? $('#notes').value + '\\n---\\n' : '') + t;
+        $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + t;
+        saveToLocal();
         continue;
       }
 
-      // per tutto il resto carico su /api/upload, poi estraggo/trascrivo
       const url = await upload(file);
 
       if (['pdf','docx'].includes(ext)){
         const text = await extract(url, name);
         setPreview('<pre>'+escapeHTML(text.slice(0,5000))+'</pre>');
-        $('#notes').value = ($('#notes').value ? $('#notes').value + '\\n---\\n' : '') + text;
+        $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + text;
+        saveToLocal();
       } else if (['mp3','m4a','wav','ogg','webm'].includes(ext)){
         const text = await transcribe(url);
         setPreview('<pre>'+escapeHTML(text.slice(0,5000))+'</pre>');
-        $('#notes').value = ($('#notes').value ? $('#notes').value + '\\n---\\n' : '') + text;
+        $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + text;
+        saveToLocal();
       } else {
         setPreview('<p class="text-slate-500">Formato non gestito: '+ext+'</p>');
       }
@@ -179,22 +255,33 @@ async function handleFiles(files){
 async function generateMinutes(){
   const notes = $('#notes').value.trim();
   if (!notes) { alert('Inserisci o carica degli appunti prima.'); return; }
-  $('#btnGenerate').disabled = true; $('#btnGenerate').textContent = 'Genero…';
+  
+  $('#btnGenerate').disabled = true; 
+  $('#btnGenerate').textContent = 'Genero…';
+  
   try{
     log('POST /api/minutes…');
     const r = await fetch('/api/minutes', {
       method:'POST',
       headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ notes })
+      body: JSON.stringify({ 
+        notes,
+        meetingDate: $('#meetingDate').value,
+        participants: $('#participants').value,
+        subject: $('#subject').value,
+        formatoVerbale: $('#template').value
+      })
     });
     const j = await r.json().catch(()=> ({}));
     log('   status', r.status, JSON.stringify(j).slice(0,200)+'…');
     if (!r.ok) throw new Error(j?.message || 'Errore generazione');
-    $('#result').textContent = j?.verbale || '(vuoto)';
+    $('#result').value = j?.verbale || '(vuoto)';
+    saveToLocal();
   } catch(e){
     alert(e.message || 'Errore generazione');
   } finally {
-    $('#btnGenerate').disabled = false; $('#btnGenerate').textContent = 'Genera verbale';
+    $('#btnGenerate').disabled = false; 
+    $('#btnGenerate').textContent = 'Genera verbale';
   }
 }
 
@@ -205,19 +292,27 @@ $('#uploader').addEventListener('change', (e) => {
 
 $('#btnClearPreview').addEventListener('click', () => setPreview(''));
 $('#btnGenerate').addEventListener('click', generateMinutes);
+$('#btnLoadLast').addEventListener('click', loadFromLocal);
 $('#btnReset').addEventListener('click', () => {
+  if (!confirm('Cancellare tutti i dati? (Il salvataggio locale non verrà cancellato)')) return;
   $('#notes').value = '';
-  $('#result').textContent = 'Il verbale comparirà qui…';
+  $('#result').value = '';
+  $('#meetingDate').value = '';
+  $('#subject').value = '';
+  $('#participants').value = '';
+  $('#template').value = 'standard';
   setPreview('');
 });
+
 $('#btnCopy').addEventListener('click', async () => {
-  const t = $('#result').textContent;
+  const t = $('#result').value;
   if (!t || t.startsWith('Il verbale')) return;
   await navigator.clipboard.writeText(t);
   alert('Copiato!');
 });
+
 $('#btnDownload').addEventListener('click', () => {
-  const t = $('#result').textContent;
+  const t = $('#result').value;
   if (!t || t.startsWith('Il verbale')) return;
   const blob = new Blob([t], { type: 'text/markdown;charset=utf-8' });
   const a = document.createElement('a');
