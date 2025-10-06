@@ -6,12 +6,17 @@
   <title>Memo AI</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body { background:#f5f7fb }
-    #log { white-space:pre-wrap; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace }
+    body { background: #f5f7fb }
+    #log { 
+      white-space: pre-wrap; 
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace 
+    }
   </style>
 </head>
 <body class="text-slate-800">
   <div class="max-w-4xl mx-auto p-6">
+
+    <!-- HEADER -->
     <header class="mb-6 flex items-center gap-4">
       <img src="https://raw.githubusercontent.com/Domenico374/domenico374.github.io/main/img/logo-memoai.png" 
            alt="Memo AI Logo" 
@@ -22,14 +27,12 @@
       </div>
     </header>
 
-    <!-- Upload -->
+    <!-- UPLOAD -->
     <section class="bg-white rounded-2xl shadow p-5 mb-6">
       <div class="flex items-start justify-between gap-3">
         <div>
           <h2 class="text-lg font-semibold">Carica file</h2>
-          <p class="text-xs text-slate-500 mt-1">
-            PDF, DOCX, TXT/MD, MP3/M4A/WAV/OGG/WEBM
-          </p>
+          <p class="text-xs text-slate-500 mt-1">PDF, DOCX, TXT/MD, MP3/M4A/WAV/OGG/WEBM</p>
         </div>
         <input id="uploader" type="file" multiple
                accept=".pdf,.docx,.txt,.md,.mp3,.m4a,.wav,.ogg,.webm"
@@ -37,11 +40,12 @@
       </div>
     </section>
 
-    <!-- Anteprima -->
+    <!-- ANTEPRIMA -->
     <section class="bg-white rounded-2xl shadow p-5 mb-6">
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-lg font-semibold">Anteprima</h2>
-        <button id="btnClearPreview" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Pulisci anteprima</button>
+        <button id="btnClearPreview" 
+                class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Pulisci anteprima</button>
       </div>
       <div id="preview"
            class="prose max-w-none border border-slate-200 rounded-xl p-4 bg-slate-50 text-sm">
@@ -49,7 +53,7 @@
       </div>
     </section>
 
-    <!-- Metadata -->
+    <!-- METADATA -->
     <section class="bg-white rounded-2xl shadow p-5 mb-6">
       <h2 class="text-lg font-semibold mb-3">Informazioni riunione (opzionale)</h2>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -71,7 +75,7 @@
       </div>
     </section>
 
-    <!-- Appunti -->
+    <!-- APPUNTI -->
     <section class="bg-white rounded-2xl shadow p-5 mb-6">
       <h2 class="text-lg font-semibold mb-3">Appunti</h2>
       <textarea id="notes" rows="12"
@@ -83,7 +87,8 @@
           class="px-4 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700">
           Genera verbale
         </button>
-        <select id="template" class="px-3 py-2 rounded-lg text-sm border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <select id="template" 
+                class="px-3 py-2 rounded-lg text-sm border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500">
           <option value="standard">Standard</option>
           <option value="formale">Formale</option>
           <option value="esecutivo">Esecutivo</option>
@@ -91,17 +96,13 @@
           <option value="informale">Informale</option>
         </select>
         <button id="btnReset"
-          class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">
-          Reset
-        </button>
+          class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Reset</button>
         <button id="btnLoadLast"
-          class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">
-          Carica ultimo
-        </button>
+          class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Carica ultimo</button>
       </div>
     </section>
 
-    <!-- Verbale -->
+    <!-- VERBALE -->
     <section class="bg-white rounded-2xl shadow p-5">
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-lg font-semibold">Verbale</h2>
@@ -112,69 +113,4 @@
       </div>
       <textarea id="result" rows="20"
         class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm leading-6"
-        placeholder="Il verbale comparirà qui..."></textarea>
-    </section>
-
-    <!-- Log -->
-    <section class="bg-white rounded-2xl shadow p-5 mt-6">
-      <h2 class="text-lg font-semibold mb-3">Log</h2>
-      <pre id="log" class="text-xs bg-slate-900 text-slate-100 p-3 rounded">pronto…</pre>
-    </section>
-  </div>
-
-<script>
-const $ = (s) => document.querySelector(s);
-const logEl = $('#log');
-function log(...a){ logEl.textContent += '\n' + a.join(' '); }
-
-// Salvataggio automatico localStorage
-function saveToLocal(){
-  const data = {
-    notes: $('#notes').value,
-    verbale: $('#result').value,
-    meetingDate: $('#meetingDate').value,
-    subject: $('#subject').value,
-    participants: $('#participants').value,
-    template: $('#template').value,
-    timestamp: new Date().toISOString()
-  };
-  localStorage.setItem('memoai_last', JSON.stringify(data));
-  log('💾 Salvato in locale');
-}
-
-function loadFromLocal(){
-  try {
-    const saved = localStorage.getItem('memoai_last');
-    if (!saved) { alert('Nessun dato salvato trovato'); return; }
-    const data = JSON.parse(saved);
-    $('#notes').value = data.notes || '';
-    $('#result').value = data.verbale || '';
-    $('#meetingDate').value = data.meetingDate || '';
-    $('#subject').value = data.subject || '';
-    $('#participants').value = data.participants || '';
-    $('#template').value = data.template || 'standard';
-    log('📂 Caricato da locale (salvato il ' + new Date(data.timestamp).toLocaleString('it-IT') + ')');
-    alert('Dati ripristinati con successo!');
-  } catch(e) {
-    alert('Errore nel caricamento: ' + e.message);
-  }
-}
-
-// Auto-save ogni volta che l'utente modifica qualcosa
-['notes', 'result', 'meetingDate', 'subject', 'participants'].forEach(id => {
-  $(`#${id}`).addEventListener('input', saveToLocal);
-});
-$('#template').addEventListener('change', saveToLocal);
-
-function setPreview(html){
-  $('#preview').innerHTML = html || '<p class="text-slate-500">L'anteprima comparirà qui…</p>';
-}
-
-function escapeHTML(s){
-  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-async function upload(file){
-  const fd = new FormData();
-  fd.append('file', file, file.name||'file');
-  fd.app
+        placeholder="Il verbale comparirà
