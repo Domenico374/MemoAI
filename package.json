@@ -1,0 +1,17 @@
+{
+  "name": "memo-ai",
+  "version": "1.0.0",
+  "description": "App per trascrizione e verbali AI",
+  "main": "index.html",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {
+    "busboy": "^1.6.0",
+    "openai": "^4.20.1",
+    "pdf-parse": "^1.1.1",
+    "mammoth": "^1.6.0",
+    "node-fetch": "^2.7.0"
+  }
+}
