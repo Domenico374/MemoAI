@@ -31,6 +31,48 @@
   <style>
     body { background:#f5f7fb }
     #log { white-space:pre-wrap; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace }
+    
+    /* Drag & Drop Styles */
+    .drop-zone {
+      border: 2px dashed #cbd5e1;
+      border-radius: 0.75rem;
+      transition: all 0.3s ease;
+      background: #f8fafc;
+    }
+    .drop-zone.dragover {
+      border-color: #3b82f6;
+      background: #eff6ff;
+      transform: scale(1.02);
+    }
+    .drop-zone.dragover .drop-text {
+      color: #3b82f6;
+    }
+    
+    /* Anteprima personalizzata */
+    .preview-card {
+      background: white;
+      border-radius: 0.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    .preview-header {
+      background: #f1f5f9;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid #e2e8f0;
+      font-weight: 600;
+    }
+    .preview-content {
+      padding: 1rem;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    
+    /* Animazioni */
+    .fade-out {
+      opacity: 0;
+      transform: translateX(-100%);
+      transition: all 0.5s ease;
+    }
   </style>
 </head>
 <body class="text-slate-800">
@@ -46,9 +88,9 @@
       </div>
     </header>
 
-    <!-- CARICA FILE -->
+    <!-- CARICA FILE con Drag & Drop -->
     <section class="bg-white rounded-2xl shadow p-5 mb-6">
-      <div class="flex items-start justify-between gap-3">
+      <div class="flex items-start justify-between gap-3 mb-4">
         <div>
           <h2 class="text-lg font-semibold">Carica file</h2>
           <p class="text-xs text-slate-500 mt-1">PDF, DOCX, TXT/MD, MP3/M4A/WAV/OGG/WEBM</p>
@@ -57,19 +99,40 @@
                accept=".pdf,.docx,.txt,.md,.mp3,.m4a,.wav,.ogg,.webm"
                class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200" />
       </div>
+      
+      <!-- Zona Drag & Drop -->
+      <div id="dropZone" class="drop-zone p-8 text-center cursor-pointer">
+        <div class="drop-text text-slate-500">
+          <svg class="w-12 h-12 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+          </svg>
+          <p class="font-medium">Trascina i file qui</p>
+          <p class="text-sm mt-1">oppure <span class="text-blue-600">clicca per selezionare</span></p>
+        </div>
+      </div>
+      
       <div id="fileQueue" class="mt-4 space-y-2"></div>
     </section>
 
-    <!-- ANTEPRIMA -->
+    <!-- ANTEPRIMA PERSONALIZZATA -->
     <section class="bg-white rounded-2xl shadow p-5 mb-6">
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-lg font-semibold">Anteprima</h2>
-        <button id="btnClearPreview"
-                class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Pulisci anteprima</button>
+        <div class="flex gap-2">
+          <button id="btnClearPreview"
+                  class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Pulisci anteprima</button>
+          <button id="btnTogglePreview"
+                  class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Nascondi</button>
+        </div>
       </div>
-      <div id="preview"
-           class="prose max-w-none border border-slate-200 rounded-xl p-4 bg-slate-50 text-sm">
-        <p class="text-slate-500">L'anteprima comparirà qui…</p>
+      <div id="preview" class="preview-card">
+        <div class="preview-header flex items-center justify-between">
+          <span>Contenuto estratto</span>
+          <span id="previewInfo" class="text-xs text-slate-500 font-normal"></span>
+        </div>
+        <div class="preview-content">
+          <p class="text-slate-500">L'anteprima comparirà qui…</p>
+        </div>
       </div>
     </section>
 
@@ -105,13 +168,22 @@
       <div class="mt-4 flex flex-wrap gap-2 items-center">
         <button id="btnGenerate"
           class="px-4 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700">Genera verbale</button>
+        
+        <!-- TEMPLATE PERSONALIZZATI -->
         <select id="template" class="px-3 py-2 rounded-lg text-sm border border-gray-300">
           <option value="standard">Standard</option>
           <option value="formale">Formale</option>
           <option value="esecutivo">Esecutivo</option>
           <option value="tecnico">Tecnico</option>
           <option value="informale">Informale</option>
+          <option value="custom1">Aziendale</option>
+          <option value="custom2">Creativo</option>
+          <option value="custom3">Minimal</option>
         </select>
+        
+        <button id="btnManageTemplates" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">
+          Gestisci Template
+        </button>
         <button id="btnReset" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Reset</button>
         <button id="btnLoadLast" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Carica ultimo</button>
       </div>
@@ -133,9 +205,42 @@
 
     <!-- LOG -->
     <section class="bg-white rounded-2xl shadow p-5 mt-6">
-      <h2 class="text-lg font-semibold mb-3">Log</h2>
-      <pre id="log" class="text-xs bg-slate-900 text-slate-100 p-3 rounded">pronto…</pre>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold">Log</h2>
+        <button id="btnClearLog" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Pulisci Log</button>
+      </div>
+      <pre id="log" class="text-xs bg-slate-900 text-slate-100 p-3 rounded max-h-40 overflow-y-auto">pronto…</pre>
     </section>
+  </div>
+
+  <!-- MODAL TEMPLATE PERSONALIZZATI -->
+  <div id="templateModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-2xl p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-lg font-semibold">Gestione Template Personalizzati</h3>
+        <button id="btnCloseModal" class="text-slate-500 hover:text-slate-700">✕</button>
+      </div>
+      
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium mb-2">Nuovo Template</label>
+          <input type="text" id="newTemplateName" placeholder="Nome template" 
+                 class="w-full p-2 border border-gray-300 rounded-lg mb-2">
+          <textarea id="newTemplateContent" rows="6" placeholder="Contenuto del template..."
+                    class="w-full p-2 border border-gray-300 rounded-lg text-sm"></textarea>
+          <button id="btnSaveTemplate" class="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+            Salva Template
+          </button>
+        </div>
+        
+        <div>
+          <h4 class="font-medium mb-2">Template Esistenti</h4>
+          <div id="templateList" class="space-y-2">
+            <!-- Template verranno caricati qui -->
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
 <script>
@@ -143,8 +248,66 @@
   // ===== Helpers
   const $ = s => document.querySelector(s);
   const logEl = $('#log');
-  function log(){ logEl.textContent += '\n' + Array.from(arguments).join(' '); }
-  function setPreview(html){ $('#preview').innerHTML = html || `<p class="text-slate-500">L'anteprima comparirà qui…</p>`; }
+  function log(){ 
+    const message = Array.from(arguments).join(' ');
+    logEl.textContent += '\n' + message;
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  
+  function setPreview(content, fileName = '', type = 'text') {
+    const previewContent = $('#preview .preview-content');
+    const previewInfo = $('#previewInfo');
+    
+    if (!content) {
+      previewContent.innerHTML = '<p class="text-slate-500">L\'anteprima comparirà qui…</p>';
+      previewInfo.textContent = '';
+      return;
+    }
+    
+    if (type === 'pdf') {
+      previewContent.innerHTML = `
+        <div class="space-y-2">
+          <div class="flex items-center gap-2 text-sm text-slate-600">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/>
+            </svg>
+            PDF Document
+          </div>
+          <div class="bg-amber-50 border border-amber-200 rounded p-3">
+            <p class="text-amber-800 text-sm"><strong>Anteprima PDF:</strong> ${fileName}</p>
+            <pre class="mt-2 text-xs bg-white p-2 rounded border">${escapeHTML(content.slice(0, 3000))}</pre>
+          </div>
+        </div>`;
+    } else if (type === 'audio') {
+      previewContent.innerHTML = `
+        <div class="space-y-2">
+          <div class="flex items-center gap-2 text-sm text-slate-600">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clip-rule="evenodd"/>
+            </svg>
+            File Audio
+          </div>
+          <div class="bg-blue-50 border border-blue-200 rounded p-3">
+            <p class="text-blue-800 text-sm"><strong>Trascrizione audio:</strong> ${fileName}</p>
+            <pre class="mt-2 text-xs bg-white p-2 rounded border">${escapeHTML(content.slice(0, 3000))}</pre>
+          </div>
+        </div>`;
+    } else {
+      previewContent.innerHTML = `
+        <div class="space-y-2">
+          <div class="flex items-center gap-2 text-sm text-slate-600">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd"/>
+            </svg>
+            Documento di testo
+          </div>
+          <pre class="text-xs bg-slate-50 p-3 rounded border">${escapeHTML(content.slice(0, 5000))}</pre>
+        </div>`;
+    }
+    
+    previewInfo.textContent = fileName ? `File: ${fileName}` : '';
+  }
+  
   function escapeHTML(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   function extOf(name){ return (name.split('.').pop()||'').toLowerCase(); }
 
@@ -153,15 +316,53 @@
     log('⚙️ boot logs:'); window.__boot.forEach(m=> log(m)); window.__boot = [];
   }
 
-  // ===== Coda caricamenti (UI)
+  // ===== Drag & Drop
+  const dropZone = $('#dropZone');
+  const uploader = $('#uploader');
+
+  dropZone.addEventListener('click', () => uploader.click());
+  
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    dropZone.addEventListener(eventName, preventDefaults, false);
+  });
+  
+  function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  
+  ['dragenter', 'dragover'].forEach(eventName => {
+    dropZone.addEventListener(eventName, () => {
+      dropZone.classList.add('dragover');
+    }, false);
+  });
+  
+  ['dragleave', 'drop'].forEach(eventName => {
+    dropZone.addEventListener(eventName, () => {
+      dropZone.classList.remove('dragover');
+    }, false);
+  });
+  
+  dropZone.addEventListener('drop', (e) => {
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length) {
+      log('🎯 File trascinati:', files.length);
+      handleFiles(files);
+    }
+  });
+
+  // ===== Coda caricamenti (UI) con pulizia automatica
   const queueEl = $('#fileQueue');
   const queueMap = new Map();
+  const completedItems = new Set();
+  
   function fmtSize(b){ if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(1)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
   function uid(){ return Math.random().toString(36).slice(2)+Date.now().toString(36); }
+  
   function addQueueItem(file){
     const id = uid();
     const row = document.createElement('div');
-    row.className = 'flex items-center justify-between border border-slate-200 rounded-lg p-2 text-sm bg-white';
+    row.className = 'flex items-center justify-between border border-slate-200 rounded-lg p-2 text-sm bg-white transition-all duration-300';
     row.dataset.id = id;
     row.innerHTML = `
       <div class="flex items-center gap-2 min-w-0">
@@ -173,22 +374,171 @@
         <div class="w-40 h-2 bg-slate-100 rounded overflow-hidden">
           <div class="h-2 bg-blue-500 transition-all" style="width:0%" data-bar></div>
         </div>
-        <span class="text-xs text-slate-600" data-status>in attesa…</span>
+        <span class="text-xs text-slate-600 min-w-[80px]" data-status>in attesa…</span>
+        <button class="text-slate-400 hover:text-slate-600 transition-colors" data-remove title="Rimuovi">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
       </div>`;
+    
     queueEl?.appendChild(row);
     queueMap.set(id, {
       row, dot: row.querySelector('[data-dot]'),
       bar: row.querySelector('[data-bar]'),
-      status: row.querySelector('[data-status]')
+      status: row.querySelector('[data-status]'),
+      remove: row.querySelector('[data-remove]'),
+      timer: null
     });
+    
+    // Gestione rimozione manuale
+    row.querySelector('[data-remove]').addEventListener('click', () => {
+      removeQueueItem(id);
+    });
+    
     return id;
   }
+  
   function setQueueState(id, state, text, progress){
-    const els = queueMap.get(id); if(!els) return;
+    const els = queueMap.get(id); 
+    if(!els) return;
+    
     if (typeof progress==='number') els.bar.style.width = Math.max(0,Math.min(100,progress))+'%';
     if (text) els.status.textContent = text;
-    const colors = { queued:'bg-slate-300', uploading:'bg-blue-400', processing:'bg-amber-400', done:'bg-emerald-500', error:'bg-rose-500' };
+    
+    const colors = { 
+      queued:'bg-slate-300', 
+      uploading:'bg-blue-400', 
+      processing:'bg-amber-400', 
+      done:'bg-emerald-500', 
+      error:'bg-rose-500' 
+    };
     els.dot.className = 'inline-block w-2.5 h-2.5 rounded-full ' + (colors[state] || 'bg-slate-300');
+    
+    // Programma pulizia automatica per gli item completati
+    if ((state === 'done' || state === 'error') && !completedItems.has(id)) {
+      completedItems.add(id);
+      els.timer = setTimeout(() => {
+        removeQueueItem(id);
+      }, 5000); // Rimuove dopo 5 secondi
+    }
+  }
+  
+  function removeQueueItem(id) {
+    const els = queueMap.get(id);
+    if (els) {
+      if (els.timer) clearTimeout(els.timer);
+      els.row.classList.add('fade-out');
+      setTimeout(() => {
+        els.row.remove();
+        queueMap.delete(id);
+        completedItems.delete(id);
+      }, 500);
+    }
+  }
+
+  // ===== Template Personalizzati
+  function loadTemplates() {
+    return JSON.parse(localStorage.getItem('memoai_templates') || '{}');
+  }
+  
+  function saveTemplates(templates) {
+    localStorage.setItem('memoai_templates', JSON.stringify(templates));
+  }
+  
+  function updateTemplateSelect() {
+    const templates = loadTemplates();
+    const select = $('#template');
+    const currentValue = select.value;
+    
+    // Rimuovi template personalizzati esistenti (tranne quelli predefiniti)
+    Array.from(select.options).forEach(option => {
+      if (option.value.startsWith('custom')) {
+        option.remove();
+      }
+    });
+    
+    // Aggiungi template personalizzati
+    Object.keys(templates).forEach(name => {
+      const option = document.createElement('option');
+      option.value = `custom_${name}`;
+      option.textContent = name;
+      select.appendChild(option);
+    });
+    
+    // Ripristina selezione precedente
+    select.value = currentValue;
+  }
+  
+  function showTemplateModal() {
+    $('#templateModal').classList.remove('hidden');
+    updateTemplateList();
+  }
+  
+  function hideTemplateModal() {
+    $('#templateModal').classList.add('hidden');
+  }
+  
+  function updateTemplateList() {
+    const templates = loadTemplates();
+    const list = $('#templateList');
+    list.innerHTML = '';
+    
+    Object.entries(templates).forEach(([name, content]) => {
+      const div = document.createElement('div');
+      div.className = 'flex justify-between items-center p-3 border border-slate-200 rounded-lg';
+      div.innerHTML = `
+        <div class="flex-1">
+          <div class="font-medium">${escapeHTML(name)}</div>
+          <div class="text-xs text-slate-500 truncate">${escapeHTML(content.slice(0, 100))}...</div>
+        </div>
+        <button class="text-rose-600 hover:text-rose-800 delete-template" data-name="${escapeHTML(name)}">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+          </svg>
+        </button>
+      `;
+      list.appendChild(div);
+    });
+    
+    // Aggiungi event listeners per eliminazione
+    document.querySelectorAll('.delete-template').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const name = e.target.closest('button').dataset.name;
+        deleteTemplate(name);
+      });
+    });
+  }
+  
+  function saveNewTemplate() {
+    const name = $('#newTemplateName').value.trim();
+    const content = $('#newTemplateContent').value.trim();
+    
+    if (!name || !content) {
+      alert('Inserisci sia nome che contenuto del template');
+      return;
+    }
+    
+    const templates = loadTemplates();
+    templates[name] = content;
+    saveTemplates(templates);
+    
+    $('#newTemplateName').value = '';
+    $('#newTemplateContent').value = '';
+    
+    updateTemplateSelect();
+    updateTemplateList();
+    log('✅ Template salvato:', name);
+  }
+  
+  function deleteTemplate(name) {
+    const templates = loadTemplates();
+    delete templates[name];
+    saveTemplates(templates);
+    
+    updateTemplateSelect();
+    updateTemplateList();
+    log('🗑️ Template eliminato:', name);
   }
 
   // ===== Salvataggio locale
@@ -203,20 +553,25 @@
       timestamp: new Date().toISOString()
     };
     localStorage.setItem('memoai_last', JSON.stringify(data));
-    log('💾 Salvato in locale');
   }
+  
   function loadFromLocal(){
-    const s = localStorage.getItem('memoai_last'); if(!s) return alert('Nessun dato salvato');
+    const s = localStorage.getItem('memoai_last'); 
+    if(!s) return alert('Nessun dato salvato');
     const d = JSON.parse(s);
     $('#notes').value=d.notes||''; $('#result').value=d.result||'';
     $('#meetingDate').value=d.meetingDate||''; $('#subject').value=d.subject||'';
-    $('#participants').value=d.participants||''; if($('#template')) $('#template').value=d.template||'standard';
-    alert('Dati caricati!');
+    $('#participants').value=d.participants||''; 
+    if($('#template')) $('#template').value=d.template||'standard';
+    log('📂 Dati caricati dal salvataggio locale');
   }
-  ['notes','result','meetingDate','subject','participants'].forEach(id=>$('#'+id)?.addEventListener('input',saveToLocal));
-  $('#template')?.addEventListener('change',saveToLocal);
 
-  // ===== API helpers
+  ['notes','result','meetingDate','subject','participants'].forEach(id => 
+    $('#'+id)?.addEventListener('input', saveToLocal)
+  );
+  $('#template')?.addEventListener('change', saveToLocal);
+
+  // ===== API helpers (resto del codice rimane uguale)
   async function fetchJSON(url, options){
     const r = await fetch(url, options);
     const ct = r.headers.get('content-type') || '';
@@ -226,12 +581,11 @@
     return body;
   }
 
-  // Upload con progresso - CORRETTO: usa endpoint esistenti
+  // Upload con progresso
   function upload(file, onProgress){
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       
-      // Determina l'endpoint in base al tipo di file
       const ext = extOf(file.name);
       let endpoint = '';
       
@@ -256,7 +610,6 @@
         try{ j = JSON.parse(xhr.responseText); } catch(e){}
         
         if (xhr.status >= 200 && xhr.status < 300) {
-          // Per compatibilità con il codice esistente, restituisci un URL fittizio
           resolve(`uploaded://${file.name}`);
         } else {
           reject(new Error((j && (j.error||j.message)) || `Upload fallito (${xhr.status})`));
@@ -309,7 +662,7 @@
     return (res && res.value) ? res.value.trim() : '';
   }
 
-  // ===== Gestione file - CORRETTA
+  // ===== Gestione file
   async function handleFiles(files){
     log('📁 File selezionati:', files.length);
     
@@ -326,7 +679,7 @@
         if (['txt','md'].includes(ext)){
           setQueueState(id,'processing','import locale…',30);
           const t = await file.text();
-          setPreview('<pre>'+escapeHTML(t.slice(0,5000))+'</pre>');
+          setPreview(t, name, 'text');
           $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + t;
           saveToLocal();
           setQueueState(id,'done','completato',100);
@@ -334,7 +687,7 @@
           continue;
         }
 
-        // Upload + backend (con fallback locale per PDF/DOCX)
+        // Upload + backend
         setQueueState(id,'uploading','caricamento…',5);
         
         try {
@@ -351,14 +704,14 @@
               text = ext==='pdf' ? await extractPdfClient(file) : await extractDocxClient(file);
               log(`✅ Fallback client: ${name}`);
             }
-            setPreview('<pre>'+escapeHTML(text.slice(0,5000))+'</pre>');
+            setPreview(text, name, 'pdf');
             $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + text;
             saveToLocal();
             setQueueState(id,'done','completato',100);
             
           } else if (['mp3','m4a','wav','ogg','webm'].includes(ext)){
             const text = await transcribe(url);
-            setPreview('<pre>'+escapeHTML(text.slice(0,5000))+'</pre>');
+            setPreview(text, name, 'audio');
             $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + text;
             saveToLocal();
             setQueueState(id,'done','completato',100);
@@ -369,13 +722,12 @@
             log(`❌ Formato non supportato: ${ext}`);
           }
         } catch (uploadError) {
-          // Se l'upload fallisce, prova il fallback client per PDF/DOCX
           if (['pdf','docx'].includes(ext)) {
             log('⚠️ Upload fallito, provo fallback client...');
             setQueueState(id,'processing','fallback client…',50);
             try {
               const text = ext==='pdf' ? await extractPdfClient(file) : await extractDocxClient(file);
-              setPreview('<pre>'+escapeHTML(text.slice(0,5000))+'</pre>');
+              setPreview(text, name, 'pdf');
               $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + text;
               saveToLocal();
               setQueueState(id,'done','completato (client)',100);
@@ -392,7 +744,6 @@
       } catch (e){
         setQueueState(id,'error', e.message || 'errore', 100);
         log('❌ Errore elaborazione', name + ':', e.message || e);
-        alert('Errore durante il caricamento di ' + name + ': ' + (e.message || 'Errore sconosciuto'));
       }
     }
   }
@@ -441,11 +792,17 @@
       log('🎯 Avvio elaborazione file...');
       handleFiles(files);
     }
-    // Reset input per permettere di ricaricare lo stesso file
     e.target.value = '';
   });
   
   $('#btnClearPreview')?.addEventListener('click', () => setPreview(''));
+  $('#btnTogglePreview')?.addEventListener('click', function() {
+    const preview = $('#preview');
+    const isHidden = preview.classList.contains('hidden');
+    preview.classList.toggle('hidden');
+    this.textContent = isHidden ? 'Nascondi' : 'Mostra';
+  });
+  
   $('#btnGenerate').addEventListener('click', generateMinutes);
   $('#btnLoadLast').addEventListener('click', loadFromLocal);
   $('#btnReset').addEventListener('click', ()=>{
@@ -469,14 +826,33 @@
     URL.revokeObjectURL(a.href);
     log('💾 Verbale scaricato');
   });
+  
+  $('#btnClearLog').addEventListener('click', () => {
+    logEl.textContent = 'pronto…';
+  });
+  
+  // Gestione Template
+  $('#btnManageTemplates').addEventListener('click', showTemplateModal);
+  $('#btnCloseModal').addEventListener('click', hideTemplateModal);
+  $('#btnSaveTemplate').addEventListener('click', saveNewTemplate);
+  
+  // Chiudi modal cliccando fuori
+  $('#templateModal').addEventListener('click', (e) => {
+    if (e.target === $('#templateModal')) {
+      hideTemplateModal();
+    }
+  });
 
-  // ===== Self test
+  // ===== Inizializzazione
+  updateTemplateSelect();
+  
+  // Self test
   fetch('/api/minutes')
     .then(r=>r.text())
     .then(t=>log('🩺 Ping /api/minutes OK:', t.slice(0,200)))
     .catch(e=>log('❌ Ping errore:', e.message||e));
     
-  log('✅ Script caricato. Pronto per l\'upload file!');
+  log('✅ Script caricato. Drag & Drop, Template Personalizzati e Anteprime avanzate attivi!');
 })();
 </script>
 </body>
