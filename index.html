@@ -37,30 +37,15 @@ if 'sentiment_chart' not in st.session_state:
 def destroy_existing_charts():
     """Distrugge i chart esistenti prima di crearne di nuovi"""
     try:
-        # Distrugge il chart partecipazione se esiste
-        if 'participation_chart' in st.session_state and st.session_state.participation_chart is not None:
-            # Per Plotly, non serve destroy, basta pulire la reference
-            st.session_state.participation_chart = None
+        # Pulizia semplice - Plotly gestisce automaticamente i canvas
+        st.session_state.participation_chart = None
+        st.session_state.sentiment_chart = None
         
-        # Distrugge il chart sentiment se esiste  
-        if 'sentiment_chart' in st.session_state and st.session_state.sentiment_chart is not None:
-            st.session_state.sentiment_chart = None
-            
-        # Pulizia aggiuntiva per garantire che i canvas siano liberi
-        cleanup_js = """
-        <script>
-        // Cerca e distrugge eventuali chart Chart.js esistenti
-        if (typeof Chart !== 'undefined') {
-            Chart.helpers.each(Chart.instances, function(instance) {
-                instance.destroy();
-            });
-        }
-        </script>
-        """
-        components.html(cleanup_js, height=0)
+        # Forza un refresh per pulire eventuali canvas
+        st.rerun()
             
     except Exception as e:
-        st.error(f"Errore nella distruzione dei chart: {e}")
+        print(f"Pulizia chart: {e}")
 
 # Stili CSS personalizzati
 st.markdown("""
@@ -210,20 +195,19 @@ with tab2:
                 st.subheader("🎯 Partecipazione Speaker")
                 participation_data = analysis['participation']
                 
-                # Crea chart partecipazione con Plotly
+                # Crea chart partecipazione con Plotly - CON CHIAVE UNIVOCA
                 fig_participation = px.pie(
                     values=list(participation_data.values()),
                     names=list(participation_data.keys()),
                     title="Distribuzione Partecipazione"
                 )
-                st.plotly_chart(fig_participation, use_container_width=True)
-                st.session_state.participation_chart = fig_participation
+                st.plotly_chart(fig_participation, use_container_width=True, key=f"participation_{filename}")
                 
                 # Chart sentiment
                 st.subheader("😊 Analisi Sentiment")
                 sentiment_data = analysis['sentiment']
                 
-                # Crea chart sentiment con Plotly
+                # Crea chart sentiment con Plotly - CON CHIAVE UNIVOCA
                 fig_sentiment = px.bar(
                     x=list(sentiment_data.keys()),
                     y=list(sentiment_data.values()),
@@ -235,8 +219,7 @@ with tab2:
                         'negative': '#e74c3c'
                     }
                 )
-                st.plotly_chart(fig_sentiment, use_container_width=True)
-                st.session_state.sentiment_chart = fig_sentiment
+                st.plotly_chart(fig_sentiment, use_container_width=True, key=f"sentiment_{filename}")
                 
                 # Word cloud e topic
                 col4, col5 = st.columns(2)
@@ -255,6 +238,7 @@ with tab2:
                     ax.imshow(wordcloud, interpolation='bilinear')
                     ax.axis('off')
                     st.pyplot(fig_wordcloud)
+                    plt.close(fig_wordcloud)  # IMPORTANTE: chiudi la figura per liberare memoria
                 
                 with col5:
                     st.subheader("🎯 Topic Principali")
@@ -311,30 +295,3 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Script JavaScript per cleanup dei chart
-cleanup_script = """
-<script>
-// Funzione per distruggere chart esistenti
-function destroyCharts() {
-    if (typeof Chart !== 'undefined') {
-        Chart.helpers.each(Chart.instances, function(instance) {
-            instance.destroy();
-        });
-    }
-}
-
-// Esegui cleanup quando la pagina viene caricata o ricaricata
-document.addEventListener('DOMContentLoaded', function() {
-    destroyCharts();
-});
-
-// Esegui cleanup anche quando Streamlit aggiorna il contenuto
-const observer = new MutationObserver(function(mutations) {
-    destroyCharts();
-});
-
-observer.observe(document.body, { childList: true, subtree: true });
-</script>
-"""
-
-components.html(cleanup_script, height=0)
