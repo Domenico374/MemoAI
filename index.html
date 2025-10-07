@@ -21,16 +21,6 @@
   </script>
   <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
 
-  <!-- Boot logger per intercettare errori PRIMA che esista #log -->
-  <script>
-    window.__boot = [];
-    function __bootLog(){ window.__boot.push([].slice.call(arguments).join(" ")); }
-    window.addEventListener("error", e => __bootLog("JS error:", e.message));
-    window.addEventListener("unhandledrejection", e => {
-      const r = e.reason; __bootLog("Promise error:", (r && (r.message||r)) || r);
-    });
-  </script>
-
   <style>
     body { background:#f5f7fb }
     #log { white-space:pre-wrap; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace }
@@ -270,9 +260,6 @@
               <option value="esecutivo">Esecutivo</option>
               <option value="tecnico">Tecnico</option>
               <option value="informale">Informale</option>
-              <option value="custom1">Aziendale</option>
-              <option value="custom2">Creativo</option>
-              <option value="custom3">Minimal</option>
             </select>
             
             <button id="btnManageTemplates" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">
@@ -503,244 +490,93 @@
   function escapeHTML(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   function extOf(name){ return (name.split('.').pop()||'').toLowerCase(); }
 
-  // Flush dei messaggi catturati prima che esistesse #log
-  if (Array.isArray(window.__boot) && window.__boot.length){
-    log('⚙️ boot logs:'); window.__boot.forEach(m=> log(m)); window.__boot = [];
-  }
-
-  // ===== Analisi AI Intelligente
-  async function analyzeContent() {
-    const notes = $('#notes').value.trim();
-    if (!notes) {
-      alert('Inserisci degli appunti prima di analizzare');
-      return;
-    }
+  // ===== Coda caricamenti (UI)
+  const queueEl = $('#fileQueue');
+  const queueMap = new Map();
+  const completedItems = new Set();
+  
+  function fmtSize(b){ if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(1)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
+  function uid(){ return Math.random().toString(36).slice(2)+Date.now().toString(36); }
+  
+  function addQueueItem(file){
+    const id = uid();
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-between border border-slate-200 rounded-lg p-2 text-sm bg-white transition-all duration-300';
+    row.dataset.id = id;
+    row.innerHTML = `
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="inline-block w-2.5 h-2.5 rounded-full bg-slate-300" data-dot></span>
+        <span class="truncate max-w-[220px]" title="${file.name}">${file.name}</span>
+        <span class="text-xs text-slate-500">· ${fmtSize(file.size||0)}</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <div class="w-40 h-2 bg-slate-100 rounded overflow-hidden">
+          <div class="h-2 bg-blue-500 transition-all" style="width:0%" data-bar></div>
+        </div>
+        <span class="text-xs text-slate-600 min-w-[80px]" data-status>in attesa…</span>
+        <button class="text-slate-400 hover:text-slate-600 transition-colors" data-remove title="Rimuovi">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>`;
     
-    const btn = $('#btnAnalyze');
-    btn.disabled = true;
-    btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Analizzando...';
+    queueEl?.appendChild(row);
+    queueMap.set(id, {
+      row, dot: row.querySelector('[data-dot]'),
+      bar: row.querySelector('[data-bar]'),
+      status: row.querySelector('[data-status]'),
+      remove: row.querySelector('[data-remove]'),
+      timer: null
+    });
     
-    try {
-      log('🤖 Avvio analisi AI...');
-      
-      // Simulazione analisi AI (sostituire con chiamate API reali)
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Analisi del contenuto
-      const analysis = performAIAnalysis(notes);
-      
-      // Aggiorna UI con i risultati
-      updateAIAnalysisUI(analysis);
-      
-      log('✅ Analisi AI completata');
-    } catch (error) {
-      log('❌ Errore analisi AI:', error.message);
-      alert('Errore durante l\'analisi AI: ' + error.message);
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Analizza Contenuto';
-    }
+    // Gestione rimozione manuale
+    row.querySelector('[data-remove]').addEventListener('click', () => {
+      removeQueueItem(id);
+    });
+    
+    return id;
   }
   
-  function performAIAnalysis(text) {
-    // Simulazione analisi AI - sostituire con API reali
-    const words = text.split(/\s+/).length;
-    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  function setQueueState(id, state, text, progress){
+    const els = queueMap.get(id); 
+    if(!els) return;
     
-    // Riepilogo intelligente
-    const summary = sentences.slice(0, 3).join('. ') + '.';
+    if (typeof progress==='number') els.bar.style.width = Math.max(0,Math.min(100,progress))+'%';
+    if (text) els.status.textContent = text;
     
-    // Rilevazione decisioni (cerca pattern tipici)
-    const decisionPatterns = [
-      /decidiamo di/gi, /decisione di/gi, /approviamo/gi, /concludiamo che/gi,
-      /siamo d'accordo su/gi, /votiamo per/gi, /accettiamo/gi
-    ];
-    
-    const decisions = [];
-    decisionPatterns.forEach(pattern => {
-      const matches = text.match(pattern);
-      if (matches) {
-        const context = text.split(pattern).slice(1).map(s => s.split(/[.!?]/)[0]);
-        context.forEach(ctx => {
-          if (ctx.trim().length > 10) {
-            decisions.push('Decisione: ' + ctx.trim());
-          }
-        });
-      }
-    });
-    
-    // Estrazione action items
-    const actionPatterns = [
-      /deve\s+(\w+)/gi, /dovrebbe\s+(\w+)/gi, /assegnare a/gi, /compito di/gi,
-      /responsabile di/gi, /entro il/gi, /deadline/gi, /task/gi
-    ];
-    
-    const actions = [];
-    actionPatterns.forEach(pattern => {
-      const matches = text.match(pattern);
-      if (matches) {
-        const context = text.split(pattern).slice(1).map(s => s.split(/[.!?]/)[0]);
-        context.forEach(ctx => {
-          if (ctx.trim().length > 10) {
-            actions.push('Task: ' + ctx.trim());
-          }
-        });
-      }
-    });
-    
-    // Analisi sentiment (semplificata)
-    const positiveWords = ['ottimo', 'buono', 'eccellente', 'fantastico', 'positivo', 'daccordo', 'approvato', 'successo'];
-    const negativeWords = ['problema', 'critico', 'negativo', 'preoccupante', 'ritardo', 'bloccato', 'difficile'];
-    
-    let sentimentScore = 0.5; // neutro
-    const foundWords = [];
-    
-    positiveWords.forEach(word => {
-      if (text.toLowerCase().includes(word)) {
-        sentimentScore += 0.1;
-        foundWords.push(word);
-      }
-    });
-    
-    negativeWords.forEach(word => {
-      if (text.toLowerCase().includes(word)) {
-        sentimentScore -= 0.1;
-        foundWords.push(word);
-      }
-    });
-    
-    sentimentScore = Math.max(0.1, Math.min(0.9, sentimentScore));
-    
-    // Suggerimenti
-    const suggestions = [];
-    if (words < 100) suggestions.push('📝 Il contenuto è piuttosto breve, considera aggiungere più dettagli');
-    if (decisions.length === 0) suggestions.push('✅ Non sono state identificate decisioni esplicite');
-    if (actions.length === 0) suggestions.push('📋 Assicurati di includere action items specifici');
-    if (sentimentScore < 0.3) suggestions.push('😟 Il tono sembra negativo, valuta un follow-up');
-    
-    return {
-      summary,
-      decisions: decisions.slice(0, 5),
-      actions: actions.slice(0, 5),
-      sentimentScore,
-      foundWords: [...new Set(foundWords)],
-      suggestions: suggestions.length > 0 ? suggestions : ['🎯 Ottimo lavoro! Il verbale è ben strutturato']
+    const colors = { 
+      queued:'bg-slate-300', 
+      uploading:'bg-blue-400', 
+      processing:'bg-amber-400', 
+      done:'bg-emerald-500', 
+      error:'bg-rose-500' 
     };
+    els.dot.className = 'inline-block w-2.5 h-2.5 rounded-full ' + (colors[state] || 'bg-slate-300');
+    
+    // Programma pulizia automatica per gli item completati
+    if ((state === 'done' || state === 'error') && !completedItems.has(id)) {
+      completedItems.add(id);
+      els.timer = setTimeout(() => {
+        removeQueueItem(id);
+      }, 5000); // Rimuove dopo 5 secondi
+    }
   }
   
-  function updateAIAnalysisUI(analysis) {
-    // Riepilogo
-    $('#aiSummary').innerHTML = `<p class="text-slate-700">${analysis.summary}</p>`;
-    
-    // Decisioni
-    const decisionsEl = $('#aiDecisions');
-    if (analysis.decisions.length > 0) {
-      decisionsEl.innerHTML = analysis.decisions.map(decision => 
-        `<div class="decision-item text-sm">${escapeHTML(decision)}</div>`
-      ).join('');
-    } else {
-      decisionsEl.innerHTML = '<p class="text-slate-400 text-sm">Nessuna decisione esplicita identificata</p>';
+  function removeQueueItem(id) {
+    const els = queueMap.get(id);
+    if (els) {
+      if (els.timer) clearTimeout(els.timer);
+      els.row.classList.add('fade-out');
+      setTimeout(() => {
+        els.row.remove();
+        queueMap.delete(id);
+        completedItems.delete(id);
+      }, 500);
     }
-    
-    // Action Items
-    const actionsEl = $('#aiActions');
-    if (analysis.actions.length > 0) {
-      actionsEl.innerHTML = analysis.actions.map(action => 
-        `<div class="action-item text-sm">${escapeHTML(action)}</div>`
-      ).join('');
-    } else {
-      actionsEl.innerHTML = '<p class="text-slate-400 text-sm">Nessun action item identificato</p>';
-    }
-    
-    // Sentiment
-    const sentimentPercent = Math.round(analysis.sentimentScore * 100);
-    $('#sentimentScore').textContent = `${sentimentPercent}% positivo`;
-    $('#sentimentFill').style.width = `${sentimentPercent}%`;
-    
-    const sentimentText = sentimentPercent >= 70 ? 'Positivo' : 
-                         sentimentPercent >= 40 ? 'Neutro' : 'Negativo';
-    
-    $('#sentimentInsights').innerHTML = `
-      <p>Il tono della riunione è <strong>${sentimentText.toLowerCase()}</strong></p>
-      ${analysis.foundWords.length > 0 ? 
-        `<p class="text-xs mt-1">Parole chiave: ${analysis.foundWords.join(', ')}</p>` : ''
-      }
-    `;
-    
-    // Suggerimenti
-    $('#aiSuggestions').innerHTML = analysis.suggestions.map(suggestion => 
-      `<div class="flex items-start gap-2">
-        <span class="text-blue-500 mt-0.5">•</span>
-        <span>${suggestion}</span>
-      </div>`
-    ).join('');
-    
-    // Aggiorna statistiche
-    updateStatistics();
   }
 
-  // ===== Statistiche
-  function updateStatistics() {
-    // Simula dati statistici (sostituire con dati reali)
-    const stats = {
-      meetings: Math.floor(Math.random() * 50) + 10,
-      decisions: Math.floor(Math.random() * 20) + 5,
-      actions: Math.floor(Math.random() * 30) + 8,
-      duration: Math.floor(Math.random() * 120) + 30
-    };
-    
-    $('#statMeetings').textContent = stats.meetings;
-    $('#statDecisions').textContent = stats.decisions;
-    $('#statActions').textContent = stats.actions;
-    $('#statDuration').textContent = stats.duration + 'm';
-    
-    updateCharts();
-  }
-  
-  function updateCharts() {
-    // Grafico partecipazione
-    const participationCtx = $('#participationChart').getContext('2d');
-    new Chart(participationCtx, {
-      type: 'doughnut',
-      data: {
-        labels: ['Mario R.', 'Laura B.', 'Giulia V.', 'Marco D.', 'Altri'],
-        datasets: [{
-          data: [30, 25, 20, 15, 10],
-          backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#6b7280']
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { position: 'bottom' }
-        }
-      }
-    });
-    
-    // Grafico trend
-    const trendCtx = $('#trendChart').getContext('2d');
-    new Chart(trendCtx, {
-      type: 'line',
-      data: {
-        labels: ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu'],
-        datasets: [{
-          label: 'Riunioni',
-          data: [12, 19, 14, 16, 18, 22],
-          borderColor: '#3b82f6',
-          tension: 0.4,
-          fill: false
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { display: false }
-        }
-      }
-    });
-  }
-
-  // ===== Drag & Drop (codice esistente mantenuto)
+  // ===== Drag & Drop
   const dropZone = $('#dropZone');
   const uploader = $('#uploader');
 
@@ -775,21 +611,649 @@
     }
   });
 
-  // ===== Resto del codice (coda caricamenti, template, upload, etc.)
-  // ... [Il resto del codice rimane identico alla versione precedente]
-  // Includi qui tutte le funzioni: coda caricamenti, template, upload, gestione file, etc.
+  // ===== Upload e gestione file
+  function upload(file, onProgress){
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      
+      const ext = extOf(file.name);
+      let endpoint = '';
+      
+      if (['pdf','docx','txt','md'].includes(ext)) {
+        endpoint = '/api/extract';
+      } else if (['mp3','m4a','wav','ogg','webm'].includes(ext)) {
+        endpoint = '/api/transcribe-audio';
+      } else {
+        reject(new Error(`Formato non supportato: ${ext}`));
+        return;
+      }
+      
+      xhr.open('POST', endpoint);
+      xhr.upload.onprogress = (e)=>{ 
+        if(e.lengthComputable && onProgress){ 
+          onProgress(Math.round((e.loaded/e.total)*100)); 
+        } 
+      };
+      
+      xhr.onload = () => {
+        let j = null; 
+        try{ j = JSON.parse(xhr.responseText); } catch(e){}
+        
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(`uploaded://${file.name}`);
+        } else {
+          reject(new Error((j && (j.error||j.message)) || `Upload fallito (${xhr.status})`));
+        }
+      };
+      
+      xhr.onerror = () => reject(new Error('Errore di rete durante l\'upload'));
+      
+      const fd = new FormData();
+      fd.append('file', file);
+      xhr.send(fd);
+    });
+  }
+
+  async function extract(url, name){
+    // Simula estrazione testo
+    return new Promise(resolve => {
+      setTimeout(() => {
+        resolve({ text: `Testo estratto dal file: ${name}\n\nQuesto è un contenuto di esempio estratto dal documento. In una situazione reale, qui ci sarebbe il testo effettivo del file.` });
+      }, 1000);
+    });
+  }
+
+  async function transcribe(url){
+    // Simula trascrizione audio
+    return new Promise(resolve => {
+      setTimeout(() => {
+        resolve({ text: `Trascrizione audio: ${url}\n\nQuesta è una simulazione della trascrizione di un file audio. In produzione, qui ci sarebbe il testo effettivo riconosciuto dal servizio di trascrizione.` });
+      }, 1500);
+    });
+  }
+
+  // ===== Fallback client-side
+  async function extractPdfClient(file){
+    if (!window.pdfjsLib) throw new Error('PDF.js non disponibile');
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    const max = Math.min(pdf.numPages, 5);
+    let text = '';
+    for(let i=1;i<=max;i++){
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map(it=>it.str).join(' ') + '\n\n';
+    }
+    return text.trim();
+  }
+
+  async function extractDocxClient(file){
+    if (!window.mammoth) throw new Error('Mammoth non disponibile');
+    const buf = await file.arrayBuffer();
+    const res = await window.mammoth.extractRawText({ arrayBuffer: buf });
+    return (res && res.value) ? res.value.trim() : '';
+  }
+
+  // ===== Gestione file
+  async function handleFiles(files){
+    log('📁 File selezionati:', files.length);
+    
+    for (const file of files){
+      const name = file.name || 'file';
+      const ext  = extOf(name);
+      const id   = addQueueItem(file);
+
+      try {
+        setQueueState(id,'queued','in attesa…',0);
+        log(`📄 Elaborando: ${name} (${fmtSize(file.size)})`);
+
+        // TXT/MD - gestione locale immediata
+        if (['txt','md'].includes(ext)){
+          setQueueState(id,'processing','import locale…',30);
+          const t = await file.text();
+          setPreview(t, name, 'text');
+          $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + t;
+          saveToLocal();
+          setQueueState(id,'done','completato',100);
+          log(`✅ TXT/MD elaborato: ${name}`);
+          continue;
+        }
+
+        // Upload + backend
+        setQueueState(id,'uploading','caricamento…',5);
+        
+        try {
+          const url = await upload(file, p=>setQueueState(id,'uploading',`caricamento… ${p}%`,p));
+          setQueueState(id,'processing','elaborazione…',60);
+
+          if (['pdf','docx'].includes(ext)){
+            let text = '';
+            try {
+              const result = await extract(url, name);
+              text = result.text;
+              log(`✅ Backend extract: ${name}`);
+            } catch (e) {
+              log('⚠️ Extract backend non disponibile, uso fallback client:', e.message);
+              text = ext==='pdf' ? await extractPdfClient(file) : await extractDocxClient(file);
+              log(`✅ Fallback client: ${name}`);
+            }
+            setPreview(text, name, 'pdf');
+            $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + text;
+            saveToLocal();
+            setQueueState(id,'done','completato',100);
+            
+          } else if (['mp3','m4a','wav','ogg','webm'].includes(ext)){
+            const result = await transcribe(url);
+            const text = result.text;
+            setPreview(text, name, 'audio');
+            $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + text;
+            saveToLocal();
+            setQueueState(id,'done','completato',100);
+            log(`✅ Audio trascritto: ${name}`);
+            
+          } else {
+            setQueueState(id,'error',`formato non gestito: ${ext}`,100);
+            log(`❌ Formato non supportato: ${ext}`);
+          }
+        } catch (uploadError) {
+          if (['pdf','docx'].includes(ext)) {
+            log('⚠️ Upload fallito, provo fallback client...');
+            setQueueState(id,'processing','fallback client…',50);
+            try {
+              const text = ext==='pdf' ? await extractPdfClient(file) : await extractDocxClient(file);
+              setPreview(text, name, 'pdf');
+              $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + text;
+              saveToLocal();
+              setQueueState(id,'done','completato (client)',100);
+              log(`✅ Fallback client riuscito: ${name}`);
+            } catch (fallbackError) {
+              setQueueState(id,'error', fallbackError.message, 100);
+              throw fallbackError;
+            }
+          } else {
+            throw uploadError;
+          }
+        }
+        
+      } catch (e){
+        setQueueState(id,'error', e.message || 'errore', 100);
+        log('❌ Errore elaborazione', name + ':', e.message || e);
+      }
+    }
+  }
+
+  // ===== Analisi AI Intelligente
+  async function analyzeContent() {
+    const notes = $('#notes').value.trim();
+    if (!notes) {
+      alert('Inserisci degli appunti prima di analizzare');
+      return;
+    }
+    
+    const btn = $('#btnAnalyze');
+    btn.disabled = true;
+    btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Analizzando...';
+    
+    try {
+      log('🤖 Avvio analisi AI...');
+      
+      // Simulazione analisi AI
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const analysis = performAIAnalysis(notes);
+      updateAIAnalysisUI(analysis);
+      
+      log('✅ Analisi AI completata');
+    } catch (error) {
+      log('❌ Errore analisi AI:', error.message);
+      alert('Errore durante l\'analisi AI: ' + error.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Analizza Contenuto';
+    }
+  }
+  
+  function performAIAnalysis(text) {
+    const words = text.split(/\s+/).length;
+    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+    
+    const summary = sentences.slice(0, 3).join('. ') + '.';
+    
+    const decisionPatterns = [
+      /decidiamo di/gi, /decisione di/gi, /approviamo/gi, /concludiamo che/gi,
+      /siamo d'accordo su/gi, /votiamo per/gi, /accettiamo/gi
+    ];
+    
+    const decisions = [];
+    decisionPatterns.forEach(pattern => {
+      const matches = text.match(pattern);
+      if (matches) {
+        const context = text.split(pattern).slice(1).map(s => s.split(/[.!?]/)[0]);
+        context.forEach(ctx => {
+          if (ctx.trim().length > 10) {
+            decisions.push('Decisione: ' + ctx.trim());
+          }
+        });
+      }
+    });
+    
+    const actionPatterns = [
+      /deve\s+(\w+)/gi, /dovrebbe\s+(\w+)/gi, /assegnare a/gi, /compito di/gi,
+      /responsabile di/gi, /entro il/gi, /deadline/gi, /task/gi
+    ];
+    
+    const actions = [];
+    actionPatterns.forEach(pattern => {
+      const matches = text.match(pattern);
+      if (matches) {
+        const context = text.split(pattern).slice(1).map(s => s.split(/[.!?]/)[0]);
+        context.forEach(ctx => {
+          if (ctx.trim().length > 10) {
+            actions.push('Task: ' + ctx.trim());
+          }
+        });
+      }
+    });
+    
+    const positiveWords = ['ottimo', 'buono', 'eccellente', 'fantastico', 'positivo', 'daccordo', 'approvato', 'successo'];
+    const negativeWords = ['problema', 'critico', 'negativo', 'preoccupante', 'ritardo', 'bloccato', 'difficile'];
+    
+    let sentimentScore = 0.5;
+    const foundWords = [];
+    
+    positiveWords.forEach(word => {
+      if (text.toLowerCase().includes(word)) {
+        sentimentScore += 0.1;
+        foundWords.push(word);
+      }
+    });
+    
+    negativeWords.forEach(word => {
+      if (text.toLowerCase().includes(word)) {
+        sentimentScore -= 0.1;
+        foundWords.push(word);
+      }
+    });
+    
+    sentimentScore = Math.max(0.1, Math.min(0.9, sentimentScore));
+    
+    const suggestions = [];
+    if (words < 100) suggestions.push('📝 Il contenuto è piuttosto breve, considera aggiungere più dettagli');
+    if (decisions.length === 0) suggestions.push('✅ Non sono state identificate decisioni esplicite');
+    if (actions.length === 0) suggestions.push('📋 Assicurati di includere action items specifici');
+    if (sentimentScore < 0.3) suggestions.push('😟 Il tono sembra negativo, valuta un follow-up');
+    
+    return {
+      summary,
+      decisions: decisions.slice(0, 5),
+      actions: actions.slice(0, 5),
+      sentimentScore,
+      foundWords: [...new Set(foundWords)],
+      suggestions: suggestions.length > 0 ? suggestions : ['🎯 Ottimo lavoro! Il verbale è ben strutturato']
+    };
+  }
+  
+  function updateAIAnalysisUI(analysis) {
+    $('#aiSummary').innerHTML = `<p class="text-slate-700">${analysis.summary}</p>`;
+    
+    const decisionsEl = $('#aiDecisions');
+    if (analysis.decisions.length > 0) {
+      decisionsEl.innerHTML = analysis.decisions.map(decision => 
+        `<div class="decision-item text-sm">${escapeHTML(decision)}</div>`
+      ).join('');
+    } else {
+      decisionsEl.innerHTML = '<p class="text-slate-400 text-sm">Nessuna decisione esplicita identificata</p>';
+    }
+    
+    const actionsEl = $('#aiActions');
+    if (analysis.actions.length > 0) {
+      actionsEl.innerHTML = analysis.actions.map(action => 
+        `<div class="action-item text-sm">${escapeHTML(action)}</div>`
+      ).join('');
+    } else {
+      actionsEl.innerHTML = '<p class="text-slate-400 text-sm">Nessun action item identificato</p>';
+    }
+    
+    const sentimentPercent = Math.round(analysis.sentimentScore * 100);
+    $('#sentimentScore').textContent = `${sentimentPercent}% positivo`;
+    $('#sentimentFill').style.width = `${sentimentPercent}%`;
+    
+    const sentimentText = sentimentPercent >= 70 ? 'Positivo' : 
+                         sentimentPercent >= 40 ? 'Neutro' : 'Negativo';
+    
+    $('#sentimentInsights').innerHTML = `
+      <p>Il tono della riunione è <strong>${sentimentText.toLowerCase()}</strong></p>
+      ${analysis.foundWords.length > 0 ? 
+        `<p class="text-xs mt-1">Parole chiave: ${analysis.foundWords.join(', ')}</p>` : ''
+      }
+    `;
+    
+    $('#aiSuggestions').innerHTML = analysis.suggestions.map(suggestion => 
+      `<div class="flex items-start gap-2">
+        <span class="text-blue-500 mt-0.5">•</span>
+        <span>${suggestion}</span>
+      </div>`
+    ).join('');
+    
+    updateStatistics();
+  }
+
+  // ===== Statistiche
+  function updateStatistics() {
+    const stats = {
+      meetings: Math.floor(Math.random() * 50) + 10,
+      decisions: Math.floor(Math.random() * 20) + 5,
+      actions: Math.floor(Math.random() * 30) + 8,
+      duration: Math.floor(Math.random() * 120) + 30
+    };
+    
+    $('#statMeetings').textContent = stats.meetings;
+    $('#statDecisions').textContent = stats.decisions;
+    $('#statActions').textContent = stats.actions;
+    $('#statDuration').textContent = stats.duration + 'm';
+    
+    updateCharts();
+  }
+  
+  function updateCharts() {
+    const participationCtx = $('#participationChart').getContext('2d');
+    new Chart(participationCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Mario R.', 'Laura B.', 'Giulia V.', 'Marco D.', 'Altri'],
+        datasets: [{
+          data: [30, 25, 20, 15, 10],
+          backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#6b7280']
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'bottom' }
+        }
+      }
+    });
+    
+    const trendCtx = $('#trendChart').getContext('2d');
+    new Chart(trendCtx, {
+      type: 'line',
+      data: {
+        labels: ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu'],
+        datasets: [{
+          label: 'Riunioni',
+          data: [12, 19, 14, 16, 18, 22],
+          borderColor: '#3b82f6',
+          tension: 0.4,
+          fill: false
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false }
+        }
+      }
+    });
+  }
+
+  // ===== Salvataggio locale
+  function saveToLocal(){
+    const data = {
+      notes: $('#notes').value,
+      result: $('#result').value,
+      meetingDate: $('#meetingDate').value,
+      subject: $('#subject').value,
+      participants: $('#participants').value,
+      project: $('#project').value,
+      template: $('#template')?.value || 'standard',
+      timestamp: new Date().toISOString()
+    };
+    localStorage.setItem('memoai_last', JSON.stringify(data));
+  }
+  
+  function loadFromLocal(){
+    const s = localStorage.getItem('memoai_last'); 
+    if(!s) return alert('Nessun dato salvato');
+    const d = JSON.parse(s);
+    $('#notes').value=d.notes||''; $('#result').value=d.result||'';
+    $('#meetingDate').value=d.meetingDate||''; $('#subject').value=d.subject||'';
+    $('#participants').value=d.participants||''; $('#project').value=d.project||'';
+    if($('#template')) $('#template').value=d.template||'standard';
+    log('📂 Dati caricati dal salvataggio locale');
+  }
+
+  // ===== Template Personalizzati
+  function loadTemplates() {
+    return JSON.parse(localStorage.getItem('memoai_templates') || '{}');
+  }
+  
+  function saveTemplates(templates) {
+    localStorage.setItem('memoai_templates', JSON.stringify(templates));
+  }
+  
+  function updateTemplateSelect() {
+    const templates = loadTemplates();
+    const select = $('#template');
+    const currentValue = select.value;
+    
+    Array.from(select.options).forEach(option => {
+      if (option.value.startsWith('custom')) {
+        option.remove();
+      }
+    });
+    
+    Object.keys(templates).forEach(name => {
+      const option = document.createElement('option');
+      option.value = `custom_${name}`;
+      option.textContent = name;
+      select.appendChild(option);
+    });
+    
+    select.value = currentValue;
+  }
+  
+  function showTemplateModal() {
+    $('#templateModal').classList.remove('hidden');
+    updateTemplateList();
+  }
+  
+  function hideTemplateModal() {
+    $('#templateModal').classList.add('hidden');
+  }
+  
+  function updateTemplateList() {
+    const templates = loadTemplates();
+    const list = $('#templateList');
+    list.innerHTML = '';
+    
+    Object.entries(templates).forEach(([name, content]) => {
+      const div = document.createElement('div');
+      div.className = 'flex justify-between items-center p-3 border border-slate-200 rounded-lg';
+      div.innerHTML = `
+        <div class="flex-1">
+          <div class="font-medium">${escapeHTML(name)}</div>
+          <div class="text-xs text-slate-500 truncate">${escapeHTML(content.slice(0, 100))}...</div>
+        </div>
+        <button class="text-rose-600 hover:text-rose-800 delete-template" data-name="${escapeHTML(name)}">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+          </svg>
+        </button>
+      `;
+      list.appendChild(div);
+    });
+    
+    document.querySelectorAll('.delete-template').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const name = e.target.closest('button').dataset.name;
+        deleteTemplate(name);
+      });
+    });
+  }
+  
+  function saveNewTemplate() {
+    const name = $('#newTemplateName').value.trim();
+    const content = $('#newTemplateContent').value.trim();
+    
+    if (!name || !content) {
+      alert('Inserisci sia nome che contenuto del template');
+      return;
+    }
+    
+    const templates = loadTemplates();
+    templates[name] = content;
+    saveTemplates(templates);
+    
+    $('#newTemplateName').value = '';
+    $('#newTemplateContent').value = '';
+    
+    updateTemplateSelect();
+    updateTemplateList();
+    log('✅ Template salvato:', name);
+  }
+  
+  function deleteTemplate(name) {
+    const templates = loadTemplates();
+    delete templates[name];
+    saveTemplates(templates);
+    
+    updateTemplateSelect();
+    updateTemplateList();
+    log('🗑️ Template eliminato:', name);
+  }
+
+  // ===== Genera verbale
+  async function generateMinutes(){
+    const notes = $('#notes').value.trim();
+    if (!notes) return alert('Inserisci o carica degli appunti prima.');
+    const btn = $('#btnGenerate'); btn.disabled = true; btn.textContent = 'Genero…';
+
+    try {
+      const payload = {
+        notes,
+        meetingDate: $('#meetingDate').value,
+        participants: $('#participants').value,
+        subject: $('#subject').value,
+        project: $('#project').value,
+        formatoVerbale: $('#template')?.value || 'standard'
+      };
+      log('➡ Generazione verbale...');
+
+      // Simula generazione verbale
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const verbale = `
+# VERBALE RIUNIONE
+
+**Data:** ${$('#meetingDate').value || 'Da definire'}
+**Oggetto:** ${$('#subject').value || 'Non specificato'}
+**Partecipanti:** ${$('#participants').value || 'Non specificati'}
+**Progetto:** ${$('#project').value || 'Non specificato'}
+
+## RIEPILOGO
+${notes.slice(0, 200)}...
+
+## DISCUSSIONE
+${notes}
+
+## DECISIONI PRESE
+- Decisione 1: Approvato il piano di progetto
+- Decisione 2: Assegnati i compiti ai partecipanti
+
+## PROSSIMI PASSI
+- Task 1: Completare documentazione entro venerdì
+- Task 2: Revisione risultati la prossima settimana
+
+**Verbale generato automaticamente con Memo AI**
+      `.trim();
+      
+      $('#result').value = verbale;
+      saveToLocal();
+      log('✅ Verbale generato con successo');
+    } catch(e){
+      alert(e.message || 'Errore generazione'); 
+      log('❌ Errore generazione verbale:', e.message);
+    } finally {
+      btn.disabled = false; btn.textContent = 'Genera verbale';
+    }
+  }
 
   // ===== Eventi UI
-  $('#btnAnalyze').addEventListener('click', analyzeContent);
-  $('#btnRefreshStats').addEventListener('click', updateStatistics);
+  $('#uploader')?.addEventListener('change', (e)=>{
+    const files = Array.from(e.target.files||[]);
+    if (files.length) {
+      log('🎯 Avvio elaborazione file...');
+      handleFiles(files);
+    }
+    e.target.value = '';
+  });
+  
+  $('#btnClearPreview')?.addEventListener('click', () => setPreview(''));
+  $('#btnTogglePreview')?.addEventListener('click', function() {
+    const preview = $('#preview');
+    const isHidden = preview.classList.contains('hidden');
+    preview.classList.toggle('hidden');
+    this.textContent = isHidden ? 'Nascondi' : 'Mostra';
+  });
+  
+  $('#btnGenerate').addEventListener('click', generateMinutes);
+  $('#btnLoadLast').addEventListener('click', loadFromLocal);
+  $('#btnReset').addEventListener('click', ()=>{
+    ['notes','result','meetingDate','subject','participants','project'].forEach(id=>$('#'+id).value='');
+    setPreview('');
+    log('🔄 Reset completato');
+  });
+  $('#btnCopy').addEventListener('click', async ()=>{
+    const t = $('#result').value; if(!t) return;
+    await navigator.clipboard.writeText(t); 
+    alert('Copiato!');
+    log('📋 Verbale copiato negli appunti');
+  });
+  $('#btnDownload').addEventListener('click', ()=>{
+    const t = $('#result').value; if(!t) return;
+    const blob = new Blob([t], { type:'text/markdown;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `verbale_${new Date().toISOString().split('T')[0]}.md`;
+    a.click(); 
+    URL.revokeObjectURL(a.href);
+    log('💾 Verbale scaricato');
+  });
+  
   $('#btnExportPDF').addEventListener('click', () => {
     log('📊 Esportazione PDF avviata...');
     alert('Esportazione PDF - Feature in sviluppo');
   });
+  
+  $('#btnClearLog').addEventListener('click', () => {
+    logEl.textContent = 'pronto…';
+  });
+  
+  $('#btnAnalyze').addEventListener('click', analyzeContent);
+  $('#btnRefreshStats').addEventListener('click', updateStatistics);
+  
+  // Gestione Template
+  $('#btnManageTemplates').addEventListener('click', showTemplateModal);
+  $('#btnCloseModal').addEventListener('click', hideTemplateModal);
+  $('#btnSaveTemplate').addEventListener('click', saveNewTemplate);
+  
+  $('#templateModal').addEventListener('click', (e) => {
+    if (e.target === $('#templateModal')) {
+      hideTemplateModal();
+    }
+  });
+
+  // Salvataggio automatico
+  ['notes','result','meetingDate','subject','participants','project'].forEach(id => 
+    $('#'+id)?.addEventListener('input', saveToLocal)
+  );
+  $('#template')?.addEventListener('change', saveToLocal);
 
   // ===== Inizializzazione
+  updateTemplateSelect();
   updateStatistics();
-  log('🚀 Memo AI Advanced caricato! Analisi AI e Statistiche pronte.');
+  
+  log('🚀 Memo AI Advanced caricato! Upload file e Analisi AI pronte.');
 })();
 </script>
 </body>
