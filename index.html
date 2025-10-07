@@ -143,7 +143,7 @@
   // ===== Helpers
   const $ = s => document.querySelector(s);
   const logEl = $('#log');
-  function log(){ logEl.textContent += '\\n' + Array.from(arguments).join(' '); }
+  function log(){ logEl.textContent += '\n' + Array.from(arguments).join(' '); }
   function setPreview(html){ $('#preview').innerHTML = html || `<p class="text-slate-500">L'anteprima comparirà qui…</p>`; }
   function escapeHTML(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   function extOf(name){ return (name.split('.').pop()||'').toLowerCase(); }
@@ -226,33 +226,63 @@
     return body;
   }
 
-  // Upload con progresso
+  // Upload con progresso - CORRETTO: usa endpoint esistenti
   function upload(file, onProgress){
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('POST','/api/upload');
-      xhr.upload.onprogress = (e)=>{ if(e.lengthComputable && onProgress){ onProgress(Math.round((e.loaded/e.total)*100)); } };
-      xhr.onload = ()=> {
-        let j=null; try{ j=JSON.parse(xhr.responseText); }catch{}
-        if (xhr.status>=200 && xhr.status<300 && j && j.url) return resolve(j.url);
-        reject(new Error((j && (j.error||j.message)) || 'Upload fallito'));
+      
+      // Determina l'endpoint in base al tipo di file
+      const ext = extOf(file.name);
+      let endpoint = '';
+      
+      if (['pdf','docx','txt','md'].includes(ext)) {
+        endpoint = '/api/extract';
+      } else if (['mp3','m4a','wav','ogg','webm'].includes(ext)) {
+        endpoint = '/api/transcribe-audio';
+      } else {
+        reject(new Error(`Formato non supportato: ${ext}`));
+        return;
+      }
+      
+      xhr.open('POST', endpoint);
+      xhr.upload.onprogress = (e)=>{ 
+        if(e.lengthComputable && onProgress){ 
+          onProgress(Math.round((e.loaded/e.total)*100)); 
+        } 
       };
-      xhr.onerror = ()=> reject(new Error('Errore di rete durante l\'upload'));
+      
+      xhr.onload = () => {
+        let j = null; 
+        try{ j = JSON.parse(xhr.responseText); } catch(e){}
+        
+        if (xhr.status >= 200 && xhr.status < 300) {
+          // Per compatibilità con il codice esistente, restituisci un URL fittizio
+          resolve(`uploaded://${file.name}`);
+        } else {
+          reject(new Error((j && (j.error||j.message)) || `Upload fallito (${xhr.status})`));
+        }
+      };
+      
+      xhr.onerror = () => reject(new Error('Errore di rete durante l\'upload'));
+      
       const fd = new FormData();
-      fd.append('file', file, file.name||'file');
-      fd.append('contentType', file.type||'application/octet-stream');
+      fd.append('file', file);
       xhr.send(fd);
     });
   }
+
   async function extract(url, name){
     return (await fetchJSON('/api/extract', {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST', 
+      headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ fileUrl:url, fileName:name })
     })).text || '';
   }
+
   async function transcribe(url){
     return (await fetchJSON('/api/transcribe-audio', {
-      method:'POST', headers:{'Content-Type':'application/json'},
+      method:'POST', 
+      headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ url })
     })).text || '';
   }
@@ -267,10 +297,11 @@
     for(let i=1;i<=max;i++){
       const page = await pdf.getPage(i);
       const content = await page.getTextContent();
-      text += content.items.map(it=>it.str).join(' ') + '\\n\\n';
+      text += content.items.map(it=>it.str).join(' ') + '\n\n';
     }
     return text.trim();
   }
+
   async function extractDocxClient(file){
     if (!window.mammoth) throw new Error('Mammoth non disponibile');
     const buf = await file.arrayBuffer();
@@ -278,8 +309,10 @@
     return (res && res.value) ? res.value.trim() : '';
   }
 
-  // ===== Gestione file
+  // ===== Gestione file - CORRETTA
   async function handleFiles(files){
+    log('📁 File selezionati:', files.length);
+    
     for (const file of files){
       const name = file.name || 'file';
       const ext  = extOf(name);
@@ -287,48 +320,79 @@
 
       try {
         setQueueState(id,'queued','in attesa…',0);
+        log(`📄 Elaborando: ${name} (${fmtSize(file.size)})`);
 
-        // TXT/MD
+        // TXT/MD - gestione locale immediata
         if (['txt','md'].includes(ext)){
           setQueueState(id,'processing','import locale…',30);
           const t = await file.text();
           setPreview('<pre>'+escapeHTML(t.slice(0,5000))+'</pre>');
-          $('#notes').value = ($('#notes').value ? $('#notes').value + '\\n---\\n' : '') + t;
+          $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + t;
           saveToLocal();
           setQueueState(id,'done','completato',100);
+          log(`✅ TXT/MD elaborato: ${name}`);
           continue;
         }
 
         // Upload + backend (con fallback locale per PDF/DOCX)
         setQueueState(id,'uploading','caricamento…',5);
-        const url = await upload(file, p=>setQueueState(id,'uploading',`caricamento… ${p}%`,p));
-        setQueueState(id,'processing','elaborazione…',60);
+        
+        try {
+          const url = await upload(file, p=>setQueueState(id,'uploading',`caricamento… ${p}%`,p));
+          setQueueState(id,'processing','elaborazione…',60);
 
-        if (['pdf','docx'].includes(ext)){
-          let text = '';
-          try {
-            text = await extract(url, name);
-          } catch (e) {
-            log('⚠️ extract backend non disponibile:', e.message);
-            text = ext==='pdf' ? await extractPdfClient(file) : await extractDocxClient(file);
+          if (['pdf','docx'].includes(ext)){
+            let text = '';
+            try {
+              text = await extract(url, name);
+              log(`✅ Backend extract: ${name}`);
+            } catch (e) {
+              log('⚠️ Extract backend non disponibile, uso fallback client:', e.message);
+              text = ext==='pdf' ? await extractPdfClient(file) : await extractDocxClient(file);
+              log(`✅ Fallback client: ${name}`);
+            }
+            setPreview('<pre>'+escapeHTML(text.slice(0,5000))+'</pre>');
+            $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + text;
+            saveToLocal();
+            setQueueState(id,'done','completato',100);
+            
+          } else if (['mp3','m4a','wav','ogg','webm'].includes(ext)){
+            const text = await transcribe(url);
+            setPreview('<pre>'+escapeHTML(text.slice(0,5000))+'</pre>');
+            $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + text;
+            saveToLocal();
+            setQueueState(id,'done','completato',100);
+            log(`✅ Audio trascritto: ${name}`);
+            
+          } else {
+            setQueueState(id,'error',`formato non gestito: ${ext}`,100);
+            log(`❌ Formato non supportato: ${ext}`);
           }
-          setPreview('<pre>'+escapeHTML(text.slice(0,5000))+'</pre>');
-          $('#notes').value = ($('#notes').value ? $('#notes').value + '\\n---\\n' : '') + text;
-          saveToLocal();
-          setQueueState(id,'done','completato',100);
-        } else if (['mp3','m4a','wav','ogg','webm'].includes(ext)){
-          const text = await transcribe(url);
-          setPreview('<pre>'+escapeHTML(text.slice(0,5000))+'</pre>');
-          $('#notes').value = ($('#notes').value ? $('#notes').value + '\\n---\\n' : '') + text;
-          saveToLocal();
-          setQueueState(id,'done','completato',100);
-        } else {
-          setQueueState(id,'error',`formato non gestito: ${ext}`,100);
+        } catch (uploadError) {
+          // Se l'upload fallisce, prova il fallback client per PDF/DOCX
+          if (['pdf','docx'].includes(ext)) {
+            log('⚠️ Upload fallito, provo fallback client...');
+            setQueueState(id,'processing','fallback client…',50);
+            try {
+              const text = ext==='pdf' ? await extractPdfClient(file) : await extractDocxClient(file);
+              setPreview('<pre>'+escapeHTML(text.slice(0,5000))+'</pre>');
+              $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + text;
+              saveToLocal();
+              setQueueState(id,'done','completato (client)',100);
+              log(`✅ Fallback client riuscito: ${name}`);
+            } catch (fallbackError) {
+              setQueueState(id,'error', fallbackError.message, 100);
+              throw fallbackError;
+            }
+          } else {
+            throw uploadError;
+          }
         }
+        
       } catch (e){
         setQueueState(id,'error', e.message || 'errore', 100);
-        log('❌', e.message || e);
-        alert(e.message || 'Errore durante il caricamento');
+        log('❌ Errore elaborazione', name + ':', e.message || e);
+        alert('Errore durante il caricamento di ' + name + ': ' + (e.message || 'Errore sconosciuto'));
       }
     }
   }
@@ -350,7 +414,8 @@
       log('➡ POST /api/minutes', JSON.stringify(payload).slice(0,160)+'…');
 
       const r = await fetch('/api/minutes', {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST', 
+        headers:{'Content-Type':'application/json'},
         body: JSON.stringify(payload)
       });
       const raw = await r.text();
@@ -360,8 +425,10 @@
       if (!r.ok) throw new Error(j.error || raw || 'Errore generazione');
       $('#result').value = j.verbale || '(vuoto)';
       saveToLocal();
+      log('✅ Verbale generato con successo');
     } catch(e){
-      alert(e.message || 'Errore generazione'); log('❌', e.message);
+      alert(e.message || 'Errore generazione'); 
+      log('❌ Errore generazione verbale:', e.message);
     } finally {
       btn.disabled = false; btn.textContent = 'Genera verbale';
     }
@@ -370,18 +437,27 @@
   // ===== Eventi UI
   $('#uploader')?.addEventListener('change', (e)=>{
     const files = Array.from(e.target.files||[]);
-    if (files.length) handleFiles(files);
+    if (files.length) {
+      log('🎯 Avvio elaborazione file...');
+      handleFiles(files);
+    }
+    // Reset input per permettere di ricaricare lo stesso file
+    e.target.value = '';
   });
+  
   $('#btnClearPreview')?.addEventListener('click', () => setPreview(''));
   $('#btnGenerate').addEventListener('click', generateMinutes);
   $('#btnLoadLast').addEventListener('click', loadFromLocal);
   $('#btnReset').addEventListener('click', ()=>{
     ['notes','result','meetingDate','subject','participants'].forEach(id=>$('#'+id).value='');
     setPreview('');
+    log('🔄 Reset completato');
   });
   $('#btnCopy').addEventListener('click', async ()=>{
     const t = $('#result').value; if(!t) return;
-    await navigator.clipboard.writeText(t); alert('Copiato!');
+    await navigator.clipboard.writeText(t); 
+    alert('Copiato!');
+    log('📋 Verbale copiato negli appunti');
   });
   $('#btnDownload').addEventListener('click', ()=>{
     const t = $('#result').value; if(!t) return;
@@ -389,15 +465,18 @@
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `verbale_${new Date().toISOString().split('T')[0]}.md`;
-    a.click(); URL.revokeObjectURL(a.href);
+    a.click(); 
+    URL.revokeObjectURL(a.href);
+    log('💾 Verbale scaricato');
   });
 
   // ===== Self test
   fetch('/api/minutes')
     .then(r=>r.text())
     .then(t=>log('🩺 Ping /api/minutes OK:', t.slice(0,200)))
-    .catch(e=>log('Ping errore:', e.message||e));
-  log('✅ Script caricato.');
+    .catch(e=>log('❌ Ping errore:', e.message||e));
+    
+  log('✅ Script caricato. Pronto per l\'upload file!');
 })();
 </script>
 </body>
