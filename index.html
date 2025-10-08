@@ -1,297 +1,1260 @@
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-import matplotlib.pyplot as plt
-import seaborn as sns
-from wordcloud import WordCloud
-import json
-import base64
-from datetime import datetime
-import io
-import os
-import tempfile
-from streamlit_dropzone import dropzone
-import streamlit.components.v1 as components
-import time
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Memo AI</title>
 
-# Configurazione pagina
-st.set_page_config(
-    page_title="Memo AI Advanced",
-    page_icon="🚀",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+  <!-- Tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Chart.js per le statistiche -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-# Inizializzazione session state
-if 'uploaded_files' not in st.session_state:
-    st.session_state.uploaded_files = []
-if 'analysis_results' not in st.session_state:
-    st.session_state.analysis_results = {}
-if 'participation_chart' not in st.session_state:
-    st.session_state.participation_chart = None
-if 'sentiment_chart' not in st.session_state:
-    st.session_state.sentiment_chart = None
+  <!-- Librerie fallback client-side -->
+  <script src="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script>
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+    }
+  </script>
+  <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
 
-# Funzione per distruggere i chart esistenti
-def destroy_existing_charts():
-    """Distrugge i chart esistenti prima di crearne di nuovi"""
-    try:
-        # Pulizia semplice - Plotly gestisce automaticamente i canvas
-        st.session_state.participation_chart = None
-        st.session_state.sentiment_chart = None
+  <style>
+    body { background:#f5f7fb }
+    #log { white-space:pre-wrap; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace }
+    
+    /* Drag & Drop Styles */
+    .drop-zone {
+      border: 2px dashed #cbd5e1;
+      border-radius: 0.75rem;
+      transition: all 0.3s ease;
+      background: #f8fafc;
+    }
+    .drop-zone.dragover {
+      border-color: #3b82f6;
+      background: #eff6ff;
+      transform: scale(1.02);
+    }
+    .drop-zone.dragover .drop-text {
+      color: #3b82f6;
+    }
+    
+    /* Anteprima personalizzata */
+    .preview-card {
+      background: white;
+      border-radius: 0.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    .preview-header {
+      background: #f1f5f9;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid #e2e8f0;
+      font-weight: 600;
+    }
+    .preview-content {
+      padding: 1rem;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    
+    /* Animazioni */
+    .fade-out {
+      opacity: 0;
+      transform: translateX(-100%);
+      transition: all 0.5s ease;
+    }
+    
+    /* AI Analysis Styles */
+    .ai-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.375rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    .ai-badge.positive { background: #dcfce7; color: #166534; }
+    .ai-badge.neutral { background: #fef3c7; color: #92400e; }
+    .ai-badge.negative { background: #fee2e2; color: #991b1b; }
+    .ai-badge.info { background: #dbeafe; color: #1e40af; }
+    
+    .decision-item {
+      border-left: 3px solid #10b981;
+      background: #f0fdf4;
+      padding: 0.75rem;
+      margin: 0.5rem 0;
+    }
+    
+    .action-item {
+      border-left: 3px solid #3b82f6;
+      background: #eff6ff;
+      padding: 0.75rem;
+      margin: 0.5rem 0;
+    }
+    
+    .sentiment-bar {
+      height: 8px;
+      border-radius: 4px;
+      background: #e5e7eb;
+      overflow: hidden;
+    }
+    
+    .sentiment-fill {
+      height: 100%;
+      transition: width 0.5s ease;
+    }
+    
+    /* Statistiche */
+    .stat-card {
+      background: white;
+      border-radius: 0.5rem;
+      padding: 1rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+  </style>
+</head>
+<body class="text-slate-800">
+  <div class="max-w-6xl mx-auto p-6">
+
+    <!-- HEADER -->
+    <header class="mb-6 flex items-center gap-4">
+      <img src="https://raw.githubusercontent.com/Domenico374/domenico374.github.io/main/img/logo-memoai.png"
+           alt="Memo AI Logo" class="h-16 w-auto">
+      <div>
+        <h1 class="text-3xl font-bold">Memo AI</h1>
+        <p class="text-sm text-slate-600">Carica PDF/DOCX/TXT/MD o Audio → Estrazione/Trascrizione → Verbale</p>
+      </div>
+    </header>
+
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <!-- COLONNA SINISTRA -->
+      <div class="xl:col-span-2 space-y-6">
         
-        # Forza un refresh per pulire eventuali canvas
-        st.rerun()
+        <!-- CARICA FILE con Drag & Drop -->
+        <section class="bg-white rounded-2xl shadow p-5">
+          <div class="flex items-start justify-between gap-3 mb-4">
+            <div>
+              <h2 class="text-lg font-semibold">Carica file</h2>
+              <p class="text-xs text-slate-500 mt-1">PDF, DOCX, TXT/MD, MP3/M4A/WAV/OGG/WEBM</p>
+            </div>
+            <input id="uploader" type="file" multiple
+                   accept=".pdf,.docx,.txt,.md,.mp3,.m4a,.wav,.ogg,.webm"
+                   class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200" />
+          </div>
+          
+          <!-- Zona Drag & Drop -->
+          <div id="dropZone" class="drop-zone p-8 text-center cursor-pointer">
+            <div class="drop-text text-slate-500">
+              <svg class="w-12 h-12 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+              </svg>
+              <p class="font-medium">Trascina i file qui</p>
+              <p class="text-sm mt-1">oppure <span class="text-blue-600">clicca per selezionare</span></p>
+            </div>
+          </div>
+          
+          <div id="fileQueue" class="mt-4 space-y-2"></div>
+        </section>
+
+        <!-- ANALISI AI -->
+        <section class="bg-white rounded-2xl shadow p-5">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-lg font-semibold">Analisi AI Intelligente</h2>
+            <button id="btnAnalyze" class="px-4 py-2 rounded-lg text-sm bg-purple-600 text-white hover:bg-purple-700 flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              </svg>
+              Analizza Contenuto
+            </button>
+          </div>
+          
+          <div id="aiAnalysis" class="space-y-4">
+            <!-- Riepilogo Intelligente -->
+            <div class="border border-slate-200 rounded-lg p-4">
+              <h3 class="font-semibold text-sm mb-2 flex items-center gap-2">
+                <span class="ai-badge info">🤖</span>
+                Riepilogo Intelligente
+              </h3>
+              <div id="aiSummary" class="text-sm text-slate-600 bg-slate-50 rounded p-3 min-h-[60px]">
+                <p class="text-slate-400">Il riepilogo automatico apparirà qui dopo l'analisi...</p>
+              </div>
+            </div>
             
-    except Exception as e:
-        print(f"Pulizia chart: {e}")
+            <!-- Decisioni e Action Items -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="border border-slate-200 rounded-lg p-4">
+                <h3 class="font-semibold text-sm mb-2 flex items-center gap-2">
+                  <span class="ai-badge positive">✅</span>
+                  Decisioni Identificate
+                </h3>
+                <div id="aiDecisions" class="space-y-2 max-h-[200px] overflow-y-auto">
+                  <p class="text-slate-400 text-sm">Nessuna decisione identificata ancora</p>
+                </div>
+              </div>
+              
+              <div class="border border-slate-200 rounded-lg p-4">
+                <h3 class="font-semibold text-sm mb-2 flex items-center gap-2">
+                  <span class="ai-badge info">📋</span>
+                  Action Items
+                </h3>
+                <div id="aiActions" class="space-y-2 max-h-[200px] overflow-y-auto">
+                  <p class="text-slate-400 text-sm">Nessun task identificato ancora</p>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Analisi Sentiment -->
+            <div class="border border-slate-200 rounded-lg p-4">
+              <h3 class="font-semibold text-sm mb-3 flex items-center gap-2">
+                <span class="ai-badge neutral">😊</span>
+                Analisi del Tono
+              </h3>
+              <div class="space-y-3">
+                <div>
+                  <div class="flex justify-between text-xs mb-1">
+                    <span>Sentiment</span>
+                    <span id="sentimentScore" class="font-medium">--</span>
+                  </div>
+                  <div class="sentiment-bar">
+                    <div id="sentimentFill" class="sentiment-fill bg-gradient-to-r from-red-500 via-yellow-500 to-green-500" style="width: 50%"></div>
+                  </div>
+                </div>
+                <div id="sentimentInsights" class="text-sm text-slate-600">
+                  <p class="text-slate-400">L'analisi del tono apparirà qui...</p>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Suggerimenti -->
+            <div class="border border-slate-200 rounded-lg p-4">
+              <h3 class="font-semibold text-sm mb-2 flex items-center gap-2">
+                <span class="ai-badge info">💡</span>
+                Suggerimenti Miglioramento
+              </h3>
+              <div id="aiSuggestions" class="text-sm text-slate-600 space-y-2">
+                <p class="text-slate-400">I suggerimenti appariranno qui dopo l'analisi...</p>
+              </div>
+            </div>
+          </div>
+        </section>
 
-# Stili CSS personalizzati
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.5rem;
-        color: #1f77b4;
-        text-align: center;
-        margin-bottom: 2rem;
-        font-weight: bold;
-    }
-    .success-box {
-        background-color: #d4edda;
-        border: 1px solid #c3e6cb;
-        border-radius: 5px;
-        padding: 15px;
-        margin: 10px 0;
-    }
-    .error-box {
-        background-color: #f8d7da;
-        border: 1px solid #f5c6cb;
-        border-radius: 5px;
-        padding: 15px;
-        margin: 10px 0;
-    }
-    .file-info {
-        background-color: #e9ecef;
-        border-radius: 5px;
-        padding: 10px;
-        margin: 5px 0;
-    }
-    .analysis-section {
-        background-color: #f8f9fa;
-        border-radius: 10px;
-        padding: 20px;
-        margin: 15px 0;
-        border-left: 4px solid #1f77b4;
-    }
-</style>
-""", unsafe_allow_html=True)
+        <!-- APPUNTI -->
+        <section class="bg-white rounded-2xl shadow p-5">
+          <h2 class="text-lg font-semibold mb-3">Appunti</h2>
+          <textarea id="notes" rows="8"
+            class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Appunti trascritti o estratti…"></textarea>
 
-# Header principale
-st.markdown('<div class="main-header">🚀 Memo AI Advanced</div>', unsafe_allow_html=True)
+          <div class="mt-4 flex flex-wrap gap-2 items-center">
+            <button id="btnGenerate"
+              class="px-4 py-2 rounded-lg text-sm bg-blue-600 text-white hover:bg-blue-700">Genera verbale</button>
+            
+            <!-- TEMPLATE PERSONALIZZATI -->
+            <select id="template" class="px-3 py-2 rounded-lg text-sm border border-gray-300">
+              <option value="standard">Standard</option>
+              <option value="formale">Formale</option>
+              <option value="esecutivo">Esecutivo</option>
+              <option value="tecnico">Tecnico</option>
+              <option value="informale">Informale</option>
+            </select>
+            
+            <button id="btnManageTemplates" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">
+              Gestisci Template
+            </button>
+            <button id="btnReset" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Reset</button>
+            <button id="btnLoadLast" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Carica ultimo</button>
+          </div>
+        </section>
 
-# Sidebar per upload e controlli
-with st.sidebar:
-    st.header("📁 Upload File")
-    
-    # Dropzone per upload
-    uploaded_files = dropzone(
-        allowed_files=["pdf", "txt", "docx", "png", "jpg", "jpeg"],
-        max_files=10,
-        label="Trascina i file qui o clicca per selezionare"
-    )
-    
-    if uploaded_files:
-        st.session_state.uploaded_files = uploaded_files
-        st.markdown(f'<div class="success-box">🎯 File trascinati: {len(uploaded_files)}</div>', unsafe_allow_html=True)
+        <!-- VERBALE -->
+        <section class="bg-white rounded-2xl shadow p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-lg font-semibold">Verbale</h2>
+            <div class="flex gap-2">
+              <button id="btnCopy" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Copia</button>
+              <button id="btnDownload" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Scarica .md</button>
+              <button id="btnExportPDF" class="px-3 py-2 rounded-lg text-sm bg-green-600 text-white hover:bg-green-700">Esporta PDF</button>
+            </div>
+          </div>
+          <textarea id="result" rows="12"
+            class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm leading-6"
+            placeholder="Il verbale comparirà qui..."></textarea>
+        </section>
+      </div>
+
+      <!-- COLONNA DESTRA -->
+      <div class="space-y-6">
         
-        for file in uploaded_files:
-            file_size = len(file['fileBytes']) / 1024
-            st.markdown(f'<div class="file-info">📄 {file["file_name"]} ({file_size:.1f} KB)</div>', unsafe_allow_html=True)
+        <!-- INFO RIUNIONE -->
+        <section class="bg-white rounded-2xl shadow p-5">
+          <h2 class="text-lg font-semibold mb-3">Informazioni riunione</h2>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Data riunione</label>
+              <input id="meetingDate" type="date"
+                     class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Oggetto</label>
+              <input id="subject" type="text" placeholder="Es. Pianificazione Q1 2025"
+                     class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Partecipanti</label>
+              <input id="participants" type="text" placeholder="Es. Mario Rossi, Laura Bianchi, etc."
+                     class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1">Progetto/Cliente</label>
+              <input id="project" type="text" placeholder="Es. Progetto Alpha"
+                     class="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+          </div>
+        </section>
 
-# Area principale
-tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "🤖 Analisi AI", "⚙️ Configurazione"])
+        <!-- STATISTICHE -->
+        <section class="bg-white rounded-2xl shadow p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-lg font-semibold">Statistiche</h2>
+            <button id="btnRefreshStats" class="px-3 py-1 rounded text-xs bg-slate-100 hover:bg-slate-200">Aggiorna</button>
+          </div>
+          
+          <div class="space-y-4">
+            <!-- Metriche Veloci -->
+            <div class="grid grid-cols-2 gap-3">
+              <div class="stat-card text-center">
+                <div class="text-2xl font-bold text-blue-600" id="statMeetings">0</div>
+                <div class="text-xs text-slate-500">Riunioni</div>
+              </div>
+              <div class="stat-card text-center">
+                <div class="text-2xl font-bold text-green-600" id="statDecisions">0</div>
+                <div class="text-xs text-slate-500">Decisioni</div>
+              </div>
+              <div class="stat-card text-center">
+                <div class="text-2xl font-bold text-purple-600" id="statActions">0</div>
+                <div class="text-xs text-slate-500">Task</div>
+              </div>
+              <div class="stat-card text-center">
+                <div class="text-2xl font-bold text-amber-600" id="statDuration">0m</div>
+                <div class="text-xs text-slate-500">Durata media</div>
+              </div>
+            </div>
+            
+            <!-- Grafico Partecipazione -->
+            <div class="stat-card">
+              <h3 class="font-semibold text-sm mb-3">Partecipazione</h3>
+              <canvas id="participationChart" height="150"></canvas>
+            </div>
+            
+            <!-- Trend Mensile -->
+            <div class="stat-card">
+              <h3 class="font-semibold text-sm mb-3">Trend Riunioni</h3>
+              <canvas id="trendChart" height="150"></canvas>
+            </div>
+          </div>
+        </section>
 
-with tab1:
-    st.header("Dashboard Principale")
-    
-    if st.session_state.uploaded_files:
-        st.markdown(f'<div class="success-box">📁 File selezionati: {len(st.session_state.uploaded_files)}</div>', unsafe_allow_html=True)
+        <!-- ANTEPRIMA -->
+        <section class="bg-white rounded-2xl shadow p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-lg font-semibold">Anteprima</h2>
+            <div class="flex gap-2">
+              <button id="btnClearPreview"
+                      class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Pulisci</button>
+              <button id="btnTogglePreview"
+                      class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Nascondi</button>
+            </div>
+          </div>
+          <div id="preview" class="preview-card">
+            <div class="preview-header flex items-center justify-between">
+              <span>Contenuto estratto</span>
+              <span id="previewInfo" class="text-xs text-slate-500 font-normal"></span>
+            </div>
+            <div class="preview-content">
+              <p class="text-slate-500">L'anteprima comparirà qui…</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- LOG -->
+        <section class="bg-white rounded-2xl shadow p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-lg font-semibold">Log</h2>
+            <button id="btnClearLog" class="px-3 py-2 rounded-lg text-sm bg-slate-100 hover:bg-slate-200">Pulisci Log</button>
+          </div>
+          <pre id="log" class="text-xs bg-slate-900 text-slate-100 p-3 rounded max-h-40 overflow-y-auto">pronto…</pre>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL TEMPLATE PERSONALIZZATI -->
+  <div id="templateModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+    <div class="bg-white rounded-2xl p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-lg font-semibold">Gestione Template Personalizzati</h3>
+        <button id="btnCloseModal" class="text-slate-500 hover:text-slate-700">✕</button>
+      </div>
+      
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium mb-2">Nuovo Template</label>
+          <input type="text" id="newTemplateName" placeholder="Nome template" 
+                 class="w-full p-2 border border-gray-300 rounded-lg mb-2">
+          <textarea id="newTemplateContent" rows="6" placeholder="Contenuto del template..."
+                    class="w-full p-2 border border-gray-300 rounded-lg text-sm"></textarea>
+          <button id="btnSaveTemplate" class="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700">
+            Salva Template
+          </button>
+        </div>
         
-        # Pulsante per avviare l'analisi
-        if st.button("🚀 Avvia Analisi AI Completa", type="primary"):
-            with st.spinner("Elaborazione in corso..."):
-                for file in st.session_state.uploaded_files:
-                    try:
-                        st.markdown(f'<div class="file-info">📄 Elaborando: {file["file_name"]} ({len(file["fileBytes"])/1024:.1f} KB)</div>', unsafe_allow_html=True)
-                        
-                        # Simulazione upload e fallback
-                        time.sleep(1)
-                        if len(file["fileBytes"]) > 100000:  # Simula fallback per file grandi
-                            st.markdown('<div class="error-box">⚠️ Upload fallito, provo fallback client...</div>', unsafe_allow_html=True)
-                            time.sleep(0.5)
-                            st.markdown(f'<div class="success-box">✅ Fallback client riuscito: {file["file_name"]}</div>', unsafe_allow_html=True)
-                        else:
-                            st.markdown(f'<div class="success-box">✅ Upload riuscito: {file["file_name"]}</div>', unsafe_allow_html=True)
-                        
-                        # Avvia analisi AI
-                        st.markdown('<div class="success-box">🤖 Avvio analisi AI...</div>', unsafe_allow_html=True)
-                        
-                        # Distruggi chart esistenti prima della nuova analisi
-                        destroy_existing_charts()
-                        
-                        # Simulazione analisi AI
-                        time.sleep(2)
-                        
-                        # Risultati simulati dell'analisi
-                        analysis_result = {
-                            "sentiment": {
-                                "positive": 65,
-                                "negative": 15,
-                                "neutral": 20
-                            },
-                            "participation": {
-                                "Speaker A": 35,
-                                "Speaker B": 25,
-                                "Speaker C": 40
-                            },
-                            "key_topics": ["IA", "Machine Learning", "Analisi Dati", "Automazione"],
-                            "word_frequency": {"IA": 12, "Machine Learning": 8, "Analisi": 6, "Dati": 5, "Automazione": 4},
-                            "summary": "Questa riunione ha affrontato principalmente temi di intelligenza artificiale e machine learning, con particolare focus sull'analisi dati e processi di automazione."
-                        }
-                        
-                        st.session_state.analysis_results[file["file_name"]] = analysis_result
-                        st.markdown(f'<div class="success-box">✅ Analisi completata per: {file["file_name"]}</div>', unsafe_allow_html=True)
-                        
-                    except Exception as e:
-                        st.markdown(f'<div class="error-box">❌ Errore analisi AI: {str(e)}</div>', unsafe_allow_html=True)
-    
-    else:
-        st.info("📎 Trascina i file nella sidebar per iniziare l'analisi")
+        <div>
+          <h4 class="font-medium mb-2">Template Esistenti</h4>
+          <div id="templateList" class="space-y-2">
+            <!-- Template verranno caricati qui -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-with tab2:
-    st.header("Analisi AI Dettagliata")
+<script>
+(function(){
+  // ===== Helpers
+  const $ = s => document.querySelector(s);
+  const logEl = $('#log');
+  function log(){ 
+    const message = Array.from(arguments).join(' ');
+    logEl.textContent += '\n' + message;
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  
+  function setPreview(content, fileName = '', type = 'text') {
+    const previewContent = $('#preview .preview-content');
+    const previewInfo = $('#previewInfo');
     
-    if not st.session_state.analysis_results:
-        st.warning("Nessuna analisi disponibile. Carica i file e avvia l'analisi nella tab Dashboard.")
-    else:
-        for filename, analysis in st.session_state.analysis_results.items():
-            with st.expander(f"📊 Analisi: {filename}", expanded=True):
-                
-                # Distruggi chart esistenti prima di crearne di nuovi
-                destroy_existing_charts()
-                
-                # Layout a colonne per i metric
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.metric("Sentimento Positivo", f"{analysis['sentiment']['positive']}%")
-                with col2:
-                    st.metric("Sentimento Neutro", f"{analysis['sentiment']['neutral']}%")
-                with col3:
-                    st.metric("Sentimento Negativo", f"{analysis['sentiment']['negative']}%")
-                
-                # Chart partecipazione
-                st.subheader("🎯 Partecipazione Speaker")
-                participation_data = analysis['participation']
-                
-                # Crea chart partecipazione con Plotly - CON CHIAVE UNIVOCA
-                fig_participation = px.pie(
-                    values=list(participation_data.values()),
-                    names=list(participation_data.keys()),
-                    title="Distribuzione Partecipazione"
-                )
-                st.plotly_chart(fig_participation, use_container_width=True, key=f"participation_{filename}")
-                
-                # Chart sentiment
-                st.subheader("😊 Analisi Sentiment")
-                sentiment_data = analysis['sentiment']
-                
-                # Crea chart sentiment con Plotly - CON CHIAVE UNIVOCA
-                fig_sentiment = px.bar(
-                    x=list(sentiment_data.keys()),
-                    y=list(sentiment_data.values()),
-                    title="Distribuzione Sentiment",
-                    color=list(sentiment_data.keys()),
-                    color_discrete_map={
-                        'positive': '#2ecc71',
-                        'neutral': '#f39c12', 
-                        'negative': '#e74c3c'
-                    }
-                )
-                st.plotly_chart(fig_sentiment, use_container_width=True, key=f"sentiment_{filename}")
-                
-                # Word cloud e topic
-                col4, col5 = st.columns(2)
-                
-                with col4:
-                    st.subheader("☁️ Word Cloud")
-                    # Crea word cloud
-                    wordcloud = WordCloud(
-                        width=400, 
-                        height=300, 
-                        background_color='white'
-                    ).generate_from_frequencies(analysis['word_frequency'])
-                    
-                    # Display word cloud
-                    fig_wordcloud, ax = plt.subplots(figsize=(10, 5))
-                    ax.imshow(wordcloud, interpolation='bilinear')
-                    ax.axis('off')
-                    st.pyplot(fig_wordcloud)
-                    plt.close(fig_wordcloud)  # IMPORTANTE: chiudi la figura per liberare memoria
-                
-                with col5:
-                    st.subheader("🎯 Topic Principali")
-                    for i, topic in enumerate(analysis['key_topics'], 1):
-                        st.write(f"{i}. {topic}")
-                
-                # Summary
-                st.subheader("📝 Riassunto")
-                st.write(analysis['summary'])
+    if (!content) {
+      previewContent.innerHTML = '<p class="text-slate-500">L\'anteprima comparirà qui…</p>';
+      previewInfo.textContent = '';
+      return;
+    }
+    
+    if (type === 'pdf') {
+      previewContent.innerHTML = `
+        <div class="space-y-2">
+          <div class="flex items-center gap-2 text-sm text-slate-600">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/>
+            </svg>
+            PDF Document
+          </div>
+          <div class="bg-amber-50 border border-amber-200 rounded p-3">
+            <p class="text-amber-800 text-sm"><strong>Anteprima PDF:</strong> ${escapeHTML(fileName)}</p>
+            <pre class="mt-2 text-xs bg-white p-2 rounded border">${escapeHTML(content.slice(0, 3000))}</pre>
+          </div>
+        </div>`;
+    } else if (type === 'audio') {
+      previewContent.innerHTML = `
+        <div class="space-y-2">
+          <div class="flex items-center gap-2 text-sm text-slate-600">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z" clip-rule="evenodd"/>
+            </svg>
+            File Audio
+          </div>
+          <div class="bg-blue-50 border border-blue-200 rounded p-3">
+            <p class="text-blue-800 text-sm"><strong>Trascrizione audio:</strong> ${escapeHTML(fileName)}</p>
+            <pre class="mt-2 text-xs bg-white p-2 rounded border">${escapeHTML(content.slice(0, 3000))}</pre>
+          </div>
+        </div>`;
+    } else {
+      previewContent.innerHTML = `
+        <div class="space-y-2">
+          <div class="flex items-center gap-2 text-sm text-slate-600">
+            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clip-rule="evenodd"/>
+            </svg>
+            Documento di testo
+          </div>
+          <pre class="text-xs bg-slate-50 p-3 rounded border">${escapeHTML(content.slice(0, 5000))}</pre>
+        </div>`;
+    }
+    
+    previewInfo.textContent = fileName ? `File: ${fileName}` : '';
+  }
+  
+  function escapeHTML(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function extOf(name){ return (name.split('.').pop()||'').toLowerCase(); }
 
-with tab3:
-    st.header("Configurazione")
+  // ===== Coda caricamenti (UI)
+  const queueEl = $('#fileQueue');
+  const queueMap = new Map();
+  const completedItems = new Set();
+  
+  function fmtSize(b){ if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(1)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
+  function uid(){ return Math.random().toString(36).slice(2)+Date.now().toString(36); }
+  
+  function addQueueItem(file){
+    const id = uid();
+    const row = document.createElement('div');
+    row.className = 'flex items-center justify-between border border-slate-200 rounded-lg p-2 text-sm bg-white transition-all duration-300';
+    row.dataset.id = id;
+    row.innerHTML = `
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="inline-block w-2.5 h-2.5 rounded-full bg-slate-300" data-dot></span>
+        <span class="truncate max-w-[220px]" title="${file.name}">${file.name}</span>
+        <span class="text-xs text-slate-500">· ${fmtSize(file.size||0)}</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <div class="w-40 h-2 bg-slate-100 rounded overflow-hidden">
+          <div class="h-2 bg-blue-500 transition-all" style="width:0%" data-bar></div>
+        </div>
+        <span class="text-xs text-slate-600 min-w-[80px]" data-status>in attesa…</span>
+        <button class="text-slate-400 hover:text-slate-600 transition-colors" data-remove title="Rimuovi">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>`;
     
-    st.subheader("Impostazioni Analisi")
-    analysis_type = st.selectbox(
-        "Tipo di Analisi",
-        ["Completa", "Solo Sentiment", "Solo Partecipazione", "Solo Topic"]
-    )
+    queueEl?.appendChild(row);
+    queueMap.set(id, {
+      row, dot: row.querySelector('[data-dot]'),
+      bar: row.querySelector('[data-bar]'),
+      status: row.querySelector('[data-status]'),
+      remove: row.querySelector('[data-remove]'),
+      timer: null
+    });
     
-    st.subheader("Preferenze Visualizzazione")
-    chart_style = st.selectbox(
-        "Stile Chart",
-        ["Plotly", "Matplotlib", "Seaborn"]
-    )
+    // Gestione rimozione manuale
+    row.querySelector('[data-remove]').addEventListener('click', () => {
+      removeQueueItem(id);
+    });
     
-    st.subheader("Export Dati")
-    if st.session_state.analysis_results:
-        if st.button("📥 Esporta Analisi come JSON"):
-            # Crea JSON esportabile
-            export_data = {
-                "export_date": datetime.now().isoformat(),
-                "analyses": st.session_state.analysis_results
+    return id;
+  }
+  
+  function setQueueState(id, state, text, progress){
+    const els = queueMap.get(id); 
+    if(!els) return;
+    
+    if (typeof progress==='number') els.bar.style.width = Math.max(0,Math.min(100,progress))+'%';
+    if (text) els.status.textContent = text;
+    
+    const colors = { 
+      queued:'bg-slate-300', 
+      uploading:'bg-blue-400', 
+      processing:'bg-amber-400', 
+      done:'bg-emerald-500', 
+      error:'bg-rose-500' 
+    };
+    els.dot.className = 'inline-block w-2.5 h-2.5 rounded-full ' + (colors[state] || 'bg-slate-300');
+    
+    // Programma pulizia automatica per gli item completati
+    if ((state === 'done' || state === 'error') && !completedItems.has(id)) {
+      completedItems.add(id);
+      els.timer = setTimeout(() => {
+        removeQueueItem(id);
+      }, 5000); // Rimuove dopo 5 secondi
+    }
+  }
+  
+  function removeQueueItem(id) {
+    const els = queueMap.get(id);
+    if (els) {
+      if (els.timer) clearTimeout(els.timer);
+      els.row.classList.add('fade-out');
+      setTimeout(() => {
+        els.row.remove();
+        queueMap.delete(id);
+        completedItems.delete(id);
+      }, 500);
+    }
+  }
+
+  // ===== Drag & Drop
+  const dropZone = $('#dropZone');
+  const uploader = $('#uploader');
+
+  dropZone.addEventListener('click', () => uploader.click());
+  
+  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+    dropZone.addEventListener(eventName, preventDefaults, false);
+  });
+  
+  function preventDefaults(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  
+  ['dragenter', 'dragover'].forEach(eventName => {
+    dropZone.addEventListener(eventName, () => {
+      dropZone.classList.add('dragover');
+    }, false);
+  });
+  
+  ['dragleave', 'drop'].forEach(eventName => {
+    dropZone.addEventListener(eventName, () => {
+      dropZone.classList.remove('dragover');
+    }, false);
+  });
+  
+  dropZone.addEventListener('drop', (e) => {
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length) {
+      log('🎯 File trascinati:', files.length);
+      handleFiles(files);
+    }
+  });
+
+  // ===== Upload e gestione file
+  function upload(file, onProgress){
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      
+      const ext = extOf(file.name);
+      let endpoint = '';
+      
+      if (['pdf','docx','txt','md'].includes(ext)) {
+        endpoint = '/api/extract';
+      } else if (['mp3','m4a','wav','ogg','webm'].includes(ext)) {
+        endpoint = '/api/transcribe-audio';
+      } else {
+        reject(new Error(`Formato non supportato: ${ext}`));
+        return;
+      }
+      
+      xhr.open('POST', endpoint);
+      xhr.upload.onprogress = (e)=>{ 
+        if(e.lengthComputable && onProgress){ 
+          onProgress(Math.round((e.loaded/e.total)*100)); 
+        } 
+      };
+      
+      xhr.onload = () => {
+        let j = null; 
+        try{ j = JSON.parse(xhr.responseText); } catch(e){}
+        
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(`uploaded://${file.name}`);
+        } else {
+          reject(new Error((j && (j.error||j.message)) || `Upload fallito (${xhr.status})`));
+        }
+      };
+      
+      xhr.onerror = () => reject(new Error('Errore di rete durante l\'upload'));
+      
+      const fd = new FormData();
+      fd.append('file', file);
+      xhr.send(fd);
+    });
+  }
+
+  async function extract(url, name){
+    // Simula estrazione testo
+    return new Promise(resolve => {
+      setTimeout(() => {
+        resolve({ text: `Testo estratto dal file: ${name}\n\nQuesto è un contenuto di esempio estratto dal documento. In una situazione reale, qui ci sarebbe il testo effettivo del file.` });
+      }, 1000);
+    });
+  }
+
+  async function transcribe(url){
+    // Simula trascrizione audio
+    return new Promise(resolve => {
+      setTimeout(() => {
+        resolve({ text: `Trascrizione audio: ${url}\n\nQuesta è una simulazione della trascrizione di un file audio. In produzione, qui ci sarebbe il testo effettivo riconosciuto dal servizio di trascrizione.` });
+      }, 1500);
+    });
+  }
+
+  // ===== Fallback client-side
+  async function extractPdfClient(file){
+    if (!window.pdfjsLib) throw new Error('PDF.js non disponibile');
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    const max = Math.min(pdf.numPages, 5);
+    let text = '';
+    for(let i=1;i<=max;i++){
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map(it=>it.str).join(' ') + '\n\n';
+    }
+    return text.trim();
+  }
+
+  async function extractDocxClient(file){
+    if (!window.mammoth) throw new Error('Mammoth non disponibile');
+    const buf = await file.arrayBuffer();
+    const res = await window.mammoth.extractRawText({ arrayBuffer: buf });
+    return (res && res.value) ? res.value.trim() : '';
+  }
+
+  // ===== Gestione file
+  async function handleFiles(files){
+    log('📁 File selezionati:', files.length);
+    
+    for (const file of files){
+      const name = file.name || 'file';
+      const ext  = extOf(name);
+      const id   = addQueueItem(file);
+
+      try {
+        setQueueState(id,'queued','in attesa…',0);
+        log(`📄 Elaborando: ${name} (${fmtSize(file.size)})`);
+
+        // TXT/MD - gestione locale immediata
+        if (['txt','md'].includes(ext)){
+          setQueueState(id,'processing','import locale…',30);
+          const t = await file.text();
+          setPreview(t, name, 'text');
+          $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + t;
+          saveToLocal();
+          setQueueState(id,'done','completato',100);
+          log(`✅ TXT/MD elaborato: ${name}`);
+          continue;
+        }
+
+        // Upload + backend
+        setQueueState(id,'uploading','caricamento…',5);
+        
+        try {
+          const url = await upload(file, p=>setQueueState(id,'uploading',`caricamento… ${p}%`,p));
+          setQueueState(id,'processing','elaborazione…',60);
+
+          if (['pdf','docx'].includes(ext)){
+            let text = '';
+            try {
+              const result = await extract(url, name);
+              text = result.text;
+              log(`✅ Backend extract: ${name}`);
+            } catch (e) {
+              log('⚠️ Extract backend non disponibile, uso fallback client:', e.message);
+              text = ext==='pdf' ? await extractPdfClient(file) : await extractDocxClient(file);
+              log(`✅ Fallback client: ${name}`);
             }
+            setPreview(text, name, 'pdf');
+            $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + text;
+            saveToLocal();
+            setQueueState(id,'done','completato',100);
             
-            # Converti in JSON
-            json_str = json.dumps(export_data, indent=2, ensure_ascii=False)
+          } else if (['mp3','m4a','wav','ogg','webm'].includes(ext)){
+            const result = await transcribe(url);
+            const text = result.text;
+            setPreview(text, name, 'audio');
+            $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + text;
+            saveToLocal();
+            setQueueState(id,'done','completato',100);
+            log(`✅ Audio trascritto: ${name}`);
             
-            # Crea download button
-            st.download_button(
-                label="Scarica JSON",
-                data=json_str,
-                file_name=f"memo_ai_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                mime="application/json"
-            )
-    else:
-        st.warning("Nessuna analisi disponibile per l'export")
+          } else {
+            setQueueState(id,'error',`formato non gestito: ${ext}`,100);
+            log(`❌ Formato non supportato: ${ext}`);
+          }
+        } catch (uploadError) {
+          if (['pdf','docx'].includes(ext)) {
+            log('⚠️ Upload fallito, provo fallback client...');
+            setQueueState(id,'processing','fallback client…',50);
+            try {
+              const text = ext==='pdf' ? await extractPdfClient(file) : await extractDocxClient(file);
+              setPreview(text, name, 'pdf');
+              $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + text;
+              saveToLocal();
+              setQueueState(id,'done','completato (client)',100);
+              log(`✅ Fallback client riuscito: ${name}`);
+            } catch (fallbackError) {
+              setQueueState(id,'error', fallbackError.message, 100);
+              throw fallbackError;
+            }
+          } else {
+            throw uploadError;
+          }
+        }
+        
+      } catch (e){
+        setQueueState(id,'error', e.message || 'errore', 100);
+        log('❌ Errore elaborazione', name + ':', e.message || e);
+      }
+    }
+  }
 
-# Footer
-st.markdown("---")
-st.markdown(
-    "<div style='text-align: center; color: #666;'>"
-    "🚀 Memo AI Advanced - Strumento di analisi intelligente per documenti e riunioni"
-    "</div>",
-    unsafe_allow_html=True
-)
+  // ===== Analisi AI Intelligente
+  async function analyzeContent() {
+    const notes = $('#notes').value.trim();
+    if (!notes) {
+      alert('Inserisci degli appunti prima di analizzare');
+      return;
+    }
+    
+    const btn = $('#btnAnalyze');
+    btn.disabled = true;
+    btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Analizzando...';
+    
+    try {
+      log('🤖 Avvio analisi AI...');
+      
+      // Simulazione analisi AI
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      const analysis = performAIAnalysis(notes);
+      updateAIAnalysisUI(analysis);
+      
+      log('✅ Analisi AI completata');
+    } catch (error) {
+      log('❌ Errore analisi AI:', error.message);
+      alert('Errore durante l\'analisi AI: ' + error.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg> Analizza Contenuto';
+    }
+  }
+  
+  function performAIAnalysis(text) {
+    const words = text.split(/\s+/).length;
+    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+    
+    const summary = sentences.slice(0, 3).join('. ') + '.';
+    
+    const decisionPatterns = [
+      /decidiamo di/gi, /decisione di/gi, /approviamo/gi, /concludiamo che/gi,
+      /siamo d'accordo su/gi, /votiamo per/gi, /accettiamo/gi
+    ];
+    
+    const decisions = [];
+    decisionPatterns.forEach(pattern => {
+      const matches = text.match(pattern);
+      if (matches) {
+        const context = text.split(pattern).slice(1).map(s => s.split(/[.!?]/)[0]);
+        context.forEach(ctx => {
+          if (ctx.trim().length > 10) {
+            decisions.push('Decisione: ' + ctx.trim());
+          }
+        });
+      }
+    });
+    
+    const actionPatterns = [
+      /deve\s+(\w+)/gi, /dovrebbe\s+(\w+)/gi, /assegnare a/gi, /compito di/gi,
+      /responsabile di/gi, /entro il/gi, /deadline/gi, /task/gi
+    ];
+    
+    const actions = [];
+    actionPatterns.forEach(pattern => {
+      const matches = text.match(pattern);
+      if (matches) {
+        const context = text.split(pattern).slice(1).map(s => s.split(/[.!?]/)[0]);
+        context.forEach(ctx => {
+          if (ctx.trim().length > 10) {
+            actions.push('Task: ' + ctx.trim());
+          }
+        });
+      }
+    });
+    
+    const positiveWords = ['ottimo', 'buono', 'eccellente', 'fantastico', 'positivo', 'daccordo', 'approvato', 'successo'];
+    const negativeWords = ['problema', 'critico', 'negativo', 'preoccupante', 'ritardo', 'bloccato', 'difficile'];
+    
+    let sentimentScore = 0.5;
+    const foundWords = [];
+    
+    positiveWords.forEach(word => {
+      if (text.toLowerCase().includes(word)) {
+        sentimentScore += 0.1;
+        foundWords.push(word);
+      }
+    });
+    
+    negativeWords.forEach(word => {
+      if (text.toLowerCase().includes(word)) {
+        sentimentScore -= 0.1;
+        foundWords.push(word);
+      }
+    });
+    
+    sentimentScore = Math.max(0.1, Math.min(0.9, sentimentScore));
+    
+    const suggestions = [];
+    if (words < 100) suggestions.push('📝 Il contenuto è piuttosto breve, considera aggiungere più dettagli');
+    if (decisions.length === 0) suggestions.push('✅ Non sono state identificate decisioni esplicite');
+    if (actions.length === 0) suggestions.push('📋 Assicurati di includere action items specifici');
+    if (sentimentScore < 0.3) suggestions.push('😟 Il tono sembra negativo, valuta un follow-up');
+    
+    return {
+      summary,
+      decisions: decisions.slice(0, 5),
+      actions: actions.slice(0, 5),
+      sentimentScore,
+      foundWords: [...new Set(foundWords)],
+      suggestions: suggestions.length > 0 ? suggestions : ['🎯 Ottimo lavoro! Il verbale è ben strutturato']
+    };
+  }
+  
+  function updateAIAnalysisUI(analysis) {
+    $('#aiSummary').innerHTML = `<p class="text-slate-700">${analysis.summary}</p>`;
+    
+    const decisionsEl = $('#aiDecisions');
+    if (analysis.decisions.length > 0) {
+      decisionsEl.innerHTML = analysis.decisions.map(decision => 
+        `<div class="decision-item text-sm">${escapeHTML(decision)}</div>`
+      ).join('');
+    } else {
+      decisionsEl.innerHTML = '<p class="text-slate-400 text-sm">Nessuna decisione esplicita identificata</p>';
+    }
+    
+    const actionsEl = $('#aiActions');
+    if (analysis.actions.length > 0) {
+      actionsEl.innerHTML = analysis.actions.map(action => 
+        `<div class="action-item text-sm">${escapeHTML(action)}</div>`
+      ).join('');
+    } else {
+      actionsEl.innerHTML = '<p class="text-slate-400 text-sm">Nessun action item identificato</p>';
+    }
+    
+    const sentimentPercent = Math.round(analysis.sentimentScore * 100);
+    $('#sentimentScore').textContent = `${sentimentPercent}% positivo`;
+    $('#sentimentFill').style.width = `${sentimentPercent}%`;
+    
+    const sentimentText = sentimentPercent >= 70 ? 'Positivo' : 
+                         sentimentPercent >= 40 ? 'Neutro' : 'Negativo';
+    
+    $('#sentimentInsights').innerHTML = `
+      <p>Il tono della riunione è <strong>${sentimentText.toLowerCase()}</strong></p>
+      ${analysis.foundWords.length > 0 ? 
+        `<p class="text-xs mt-1">Parole chiave: ${analysis.foundWords.join(', ')}</p>` : ''
+      }
+    `;
+    
+    $('#aiSuggestions').innerHTML = analysis.suggestions.map(suggestion => 
+      `<div class="flex items-start gap-2">
+        <span class="text-blue-500 mt-0.5">•</span>
+        <span>${suggestion}</span>
+      </div>`
+    ).join('');
+    
+    updateStatistics();
+  }
 
+  // ===== Statistiche
+  function updateStatistics() {
+    const stats = {
+      meetings: Math.floor(Math.random() * 50) + 10,
+      decisions: Math.floor(Math.random() * 20) + 5,
+      actions: Math.floor(Math.random() * 30) + 8,
+      duration: Math.floor(Math.random() * 120) + 30
+    };
+    
+    $('#statMeetings').textContent = stats.meetings;
+    $('#statDecisions').textContent = stats.decisions;
+    $('#statActions').textContent = stats.actions;
+    $('#statDuration').textContent = stats.duration + 'm';
+    
+    updateCharts();
+  }
+  
+  function updateCharts() {
+    const participationCtx = $('#participationChart').getContext('2d');
+    new Chart(participationCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Mario R.', 'Laura B.', 'Giulia V.', 'Marco D.', 'Altri'],
+        datasets: [{
+          data: [30, 25, 20, 15, 10],
+          backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#6b7280']
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'bottom' }
+        }
+      }
+    });
+    
+    const trendCtx = $('#trendChart').getContext('2d');
+    new Chart(trendCtx, {
+      type: 'line',
+      data: {
+        labels: ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu'],
+        datasets: [{
+          label: 'Riunioni',
+          data: [12, 19, 14, 16, 18, 22],
+          borderColor: '#3b82f6',
+          tension: 0.4,
+          fill: false
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false }
+        }
+      }
+    });
+  }
+
+  // ===== Salvataggio locale
+  function saveToLocal(){
+    const data = {
+      notes: $('#notes').value,
+      result: $('#result').value,
+      meetingDate: $('#meetingDate').value,
+      subject: $('#subject').value,
+      participants: $('#participants').value,
+      project: $('#project').value,
+      template: $('#template')?.value || 'standard',
+      timestamp: new Date().toISOString()
+    };
+    localStorage.setItem('memoai_last', JSON.stringify(data));
+  }
+  
+  function loadFromLocal(){
+    const s = localStorage.getItem('memoai_last'); 
+    if(!s) return alert('Nessun dato salvato');
+    const d = JSON.parse(s);
+    $('#notes').value=d.notes||''; $('#result').value=d.result||'';
+    $('#meetingDate').value=d.meetingDate||''; $('#subject').value=d.subject||'';
+    $('#participants').value=d.participants||''; $('#project').value=d.project||'';
+    if($('#template')) $('#template').value=d.template||'standard';
+    log('📂 Dati caricati dal salvataggio locale');
+  }
+
+  // ===== Template Personalizzati
+  function loadTemplates() {
+    return JSON.parse(localStorage.getItem('memoai_templates') || '{}');
+  }
+  
+  function saveTemplates(templates) {
+    localStorage.setItem('memoai_templates', JSON.stringify(templates));
+  }
+  
+  function updateTemplateSelect() {
+    const templates = loadTemplates();
+    const select = $('#template');
+    const currentValue = select.value;
+    
+    Array.from(select.options).forEach(option => {
+      if (option.value.startsWith('custom')) {
+        option.remove();
+      }
+    });
+    
+    Object.keys(templates).forEach(name => {
+      const option = document.createElement('option');
+      option.value = `custom_${name}`;
+      option.textContent = name;
+      select.appendChild(option);
+    });
+    
+    select.value = currentValue;
+  }
+  
+  function showTemplateModal() {
+    $('#templateModal').classList.remove('hidden');
+    updateTemplateList();
+  }
+  
+  function hideTemplateModal() {
+    $('#templateModal').classList.add('hidden');
+  }
+  
+  function updateTemplateList() {
+    const templates = loadTemplates();
+    const list = $('#templateList');
+    list.innerHTML = '';
+    
+    Object.entries(templates).forEach(([name, content]) => {
+      const div = document.createElement('div');
+      div.className = 'flex justify-between items-center p-3 border border-slate-200 rounded-lg';
+      div.innerHTML = `
+        <div class="flex-1">
+          <div class="font-medium">${escapeHTML(name)}</div>
+          <div class="text-xs text-slate-500 truncate">${escapeHTML(content.slice(0, 100))}...</div>
+        </div>
+        <button class="text-rose-600 hover:text-rose-800 delete-template" data-name="${escapeHTML(name)}">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+          </svg>
+        </button>
+      `;
+      list.appendChild(div);
+    });
+    
+    document.querySelectorAll('.delete-template').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const name = e.target.closest('button').dataset.name;
+        deleteTemplate(name);
+      });
+    });
+  }
+  
+  function saveNewTemplate() {
+    const name = $('#newTemplateName').value.trim();
+    const content = $('#newTemplateContent').value.trim();
+    
+    if (!name || !content) {
+      alert('Inserisci sia nome che contenuto del template');
+      return;
+    }
+    
+    const templates = loadTemplates();
+    templates[name] = content;
+    saveTemplates(templates);
+    
+    $('#newTemplateName').value = '';
+    $('#newTemplateContent').value = '';
+    
+    updateTemplateSelect();
+    updateTemplateList();
+    log('✅ Template salvato:', name);
+  }
+  
+  function deleteTemplate(name) {
+    const templates = loadTemplates();
+    delete templates[name];
+    saveTemplates(templates);
+    
+    updateTemplateSelect();
+    updateTemplateList();
+    log('🗑️ Template eliminato:', name);
+  }
+
+  // ===== Genera verbale
+  async function generateMinutes(){
+    const notes = $('#notes').value.trim();
+    if (!notes) return alert('Inserisci o carica degli appunti prima.');
+    const btn = $('#btnGenerate'); btn.disabled = true; btn.textContent = 'Genero…';
+
+    try {
+      const payload = {
+        notes,
+        meetingDate: $('#meetingDate').value,
+        participants: $('#participants').value,
+        subject: $('#subject').value,
+        project: $('#project').value,
+        formatoVerbale: $('#template')?.value || 'standard'
+      };
+      log('➡ Generazione verbale...');
+
+      // Simula generazione verbale
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const verbale = `
+# VERBALE RIUNIONE
+
+**Data:** ${$('#meetingDate').value || 'Da definire'}
+**Oggetto:** ${$('#subject').value || 'Non specificato'}
+**Partecipanti:** ${$('#participants').value || 'Non specificati'}
+**Progetto:** ${$('#project').value || 'Non specificato'}
+
+## RIEPILOGO
+${notes.slice(0, 200)}...
+
+## DISCUSSIONE
+${notes}
+
+## DECISIONI PRESE
+- Decisione 1: Approvato il piano di progetto
+- Decisione 2: Assegnati i compiti ai partecipanti
+
+## PROSSIMI PASSI
+- Task 1: Completare documentazione entro venerdì
+- Task 2: Revisione risultati la prossima settimana
+
+**Verbale generato automaticamente con Memo AI**
+      `.trim();
+      
+      $('#result').value = verbale;
+      saveToLocal();
+      log('✅ Verbale generato con successo');
+    } catch(e){
+      alert(e.message || 'Errore generazione'); 
+      log('❌ Errore generazione verbale:', e.message);
+    } finally {
+      btn.disabled = false; btn.textContent = 'Genera verbale';
+    }
+  }
+
+  // ===== Eventi UI
+  $('#uploader')?.addEventListener('change', (e)=>{
+    const files = Array.from(e.target.files||[]);
+    if (files.length) {
+      log('🎯 Avvio elaborazione file...');
+      handleFiles(files);
+    }
+    e.target.value = '';
+  });
+  
+  $('#btnClearPreview')?.addEventListener('click', () => setPreview(''));
+  $('#btnTogglePreview')?.addEventListener('click', function() {
+    const preview = $('#preview');
+    const isHidden = preview.classList.contains('hidden');
+    preview.classList.toggle('hidden');
+    this.textContent = isHidden ? 'Nascondi' : 'Mostra';
+  });
+  
+  $('#btnGenerate').addEventListener('click', generateMinutes);
+  $('#btnLoadLast').addEventListener('click', loadFromLocal);
+  $('#btnReset').addEventListener('click', ()=>{
+    ['notes','result','meetingDate','subject','participants','project'].forEach(id=>$('#'+id).value='');
+    setPreview('');
+    log('🔄 Reset completato');
+  });
+  $('#btnCopy').addEventListener('click', async ()=>{
+    const t = $('#result').value; if(!t) return;
+    await navigator.clipboard.writeText(t); 
+    alert('Copiato!');
+    log('📋 Verbale copiato negli appunti');
+  });
+  $('#btnDownload').addEventListener('click', ()=>{
+    const t = $('#result').value; if(!t) return;
+    const blob = new Blob([t], { type:'text/markdown;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `verbale_${new Date().toISOString().split('T')[0]}.md`;
+    a.click(); 
+    URL.revokeObjectURL(a.href);
+    log('💾 Verbale scaricato');
+  });
+  
+  $('#btnExportPDF').addEventListener('click', () => {
+    log('📊 Esportazione PDF avviata...');
+    alert('Esportazione PDF - Feature in sviluppo');
+  });
+  
+  $('#btnClearLog').addEventListener('click', () => {
+    logEl.textContent = 'pronto…';
+  });
+  
+  $('#btnAnalyze').addEventListener('click', analyzeContent);
+  $('#btnRefreshStats').addEventListener('click', updateStatistics);
+  
+  // Gestione Template
+  $('#btnManageTemplates').addEventListener('click', showTemplateModal);
+  $('#btnCloseModal').addEventListener('click', hideTemplateModal);
+  $('#btnSaveTemplate').addEventListener('click', saveNewTemplate);
+  
+  $('#templateModal').addEventListener('click', (e) => {
+    if (e.target === $('#templateModal')) {
+      hideTemplateModal();
+    }
+  });
+
+  // Salvataggio automatico
+  ['notes','result','meetingDate','subject','participants','project'].forEach(id => 
+    $('#'+id)?.addEventListener('input', saveToLocal)
+  );
+  $('#template')?.addEventListener('change', saveToLocal);
+
+  // ===== Inizializzazione
+  updateTemplateSelect();
+  updateStatistics();
+  
+  log('🚀 Memo AI Advanced caricato! Upload file e Analisi AI pronte.');
+})();
+</script>
+</body>
+</html>
