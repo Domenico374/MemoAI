@@ -6,6 +6,8 @@ import OpenAI, { toFile } from "openai";
 export const config = { api: { bodyParser: false } };
 
 export default async function handler(req, res) {
+  console.log("🎯 ENDPOINT CHIAMATO: tranecribe-audio");
+  
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -15,46 +17,77 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  console.log("🎯 Tranecribe-audio (typo) chiamato");
-
   const form = formidable({
     multiples: false,
     maxFileSize: 10 * 1024 * 1024,
     filter: function ({ mimetype }) {
+      console.log("🔍 MimeType ricevuto:", mimetype);
       return mimetype && mimetype.includes("audio");
     }
   });
 
   try {
-    const { files } = await new Promise((resolve, reject) => {
+    console.log("📨 Inizio parsing form...");
+    
+    const { fields, files } = await new Promise((resolve, reject) => {
       form.parse(req, (err, fields, files) => {
-        if (err) reject(err);
-        else resolve({ fields, files });
+        if (err) {
+          console.error("❌ ERRORE Formidable:", err);
+          reject(err);
+        } else {
+          console.log("✅ Formidable success:", { 
+            fileKeys: Object.keys(files),
+            fieldKeys: Object.keys(fields),
+            firstFile: files[Object.keys(files)[0]]
+          });
+          resolve({ fields, files });
+        }
       });
     });
 
     const fileKeys = Object.keys(files);
+    console.log("📁 File keys trovati:", fileKeys);
+    
     if (fileKeys.length === 0) {
+      console.log("❌ Nessun file trovato in files object");
       return res.status(400).json({ ok: false, error: "Nessun file audio ricevuto" });
     }
 
     const file = files[fileKeys[0]];
     const audioFile = Array.isArray(file) ? file[0] : file;
+    
+    console.log("✅ File elaborato:", {
+      name: audioFile.originalFilename,
+      size: audioFile.size,
+      mimetype: audioFile.mimetype,
+      filepath: audioFile.filepath
+    });
 
-    console.log("✅ File ricevuto via typo endpoint:", audioFile.originalFilename);
-
-    // TRASCRIZIONE
+    // VERIFICA OPENAI API KEY
+    console.log("🔑 OpenAI Key presente:", !!process.env.OPENAI_API_KEY);
+    
     if (!process.env.OPENAI_API_KEY) {
+      console.log("⚠️  Test mode - OpenAI key mancante");
       return res.status(200).json({ 
         ok: true, 
-        text: "[TEST] Trascrizione disabilitata - File ricevuto: " + audioFile.originalFilename 
+        text: "[TEST] File ricevuto: " + audioFile.originalFilename 
       });
     }
 
+    console.log("🔮 Inizio trascrizione OpenAI...");
+    
+    // TRASCRIZIONE CON OPENAI
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    
+    // Leggi il file temporaneo
+    console.log("📖 Lettura file buffer...");
     const fileBuffer = fs.readFileSync(audioFile.filepath);
+    console.log("📦 Buffer size:", fileBuffer.length);
+    
+    console.log("🔄 Conversione toFile...");
     const openaiFile = await toFile(fileBuffer, audioFile.originalFilename);
-
+    
+    console.log("🎙️  Invio a OpenAI...");
     const transcription = await openai.audio.transcriptions.create({
       file: openaiFile,
       model: "whisper-1", 
@@ -62,7 +95,12 @@ export default async function handler(req, res) {
       response_format: "text"
     });
 
-    fs.unlinkSync(audioFile.filepath);
+    console.log("✅ Trascrizione completata:", transcription.text?.substring(0, 50) + "...");
+
+    // Pulizia
+    if (fs.existsSync(audioFile.filepath)) {
+      fs.unlinkSync(audioFile.filepath);
+    }
 
     return res.status(200).json({ 
       ok: true, 
@@ -71,10 +109,13 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error("❌ Errore:", error);
+    console.error("❌ ERRORE COMPLETO:", error);
+    console.error("❌ Stack:", error.stack);
+    
     return res.status(500).json({ 
       ok: false, 
-      error: error.message || "Errore trascrizione" 
+      error: error.message || "Errore sconosciuto",
+      step: "check console logs"
     });
   }
 }
