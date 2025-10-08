@@ -1,4 +1,4 @@
-// /api/audio-upload.js - VERSIONE SEMPLICE E FUNZIONANTE
+// /api/audio-upload.js - VERSIONE CORRETTA
 import formidable from "formidable";
 import fs from "fs";
 import { OpenAI } from "openai";
@@ -24,7 +24,7 @@ export default async function handler(req, res) {
   try {
     const form = formidable({
       multiples: false,
-      maxFileSize: 10 * 1024 * 1024,
+      maxFileSize: 200 * 1024 * 1024,  // 👈 ✅ CORRETTO: 200MB
       keepExtensions: true
     });
 
@@ -47,7 +47,7 @@ export default async function handler(req, res) {
     const audioFile = Array.isArray(file) ? file[0] : file;
     tempFilePath = audioFile.filepath;
 
-    console.log("✅ File ricevuto:", audioFile.originalFilename);
+    console.log("✅ File ricevuto:", audioFile.originalFilename, "Dimensione:", audioFile.size);
 
     // PRIMA FASE: Solo upload (senza OpenAI)
     console.log("📦 Upload completato, ritorno successo...");
