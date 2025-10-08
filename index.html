@@ -537,109 +537,81 @@
   function fmtSize(b){ if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(1)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
 
   // ===== Chunk Uploader per file grandi
-class ChunkUploader {
+  class ChunkUploader {
     constructor() {
-        this.chunkSize = 4 * 1024 * 1024; // 4MB per chunk (compatibile con Vercel)
+      this.chunkSize = 4 * 1024 * 1024; // 4MB per chunk (compatibile con Vercel)
     }
 
-   async uploadLargeFile(file) {
-    const totalChunks = Math.ceil(file.size / this.chunkSize);
-    const fileName = file.name;
-    
-    log(`📦 Dividendo file ${fileName} in ${totalChunks} chunk...`);
-    this.showLargeFileProgress(fileName, file.size, totalChunks);
-    
-    let uploadedSize = 0;
-    
-    try {
+    async uploadLargeFile(file) {
+      const totalChunks = Math.ceil(file.size / this.chunkSize);
+      const fileName = file.name;
+      
+      log(`📦 Dividendo file ${fileName} in ${totalChunks} chunk...`);
+      this.showLargeFileProgress(fileName, file.size, totalChunks);
+      
+      let uploadedSize = 0;
+      
+      try {
         // 1. UPLOAD DI TUTTI I CHUNK
         for (let i = 0; i < totalChunks; i++) {
-            const start = i * this.chunkSize;
-            const end = Math.min(start + this.chunkSize, file.size);
-            const chunk = file.slice(start, end);
-            
-            const chunkData = await this.chunkToBase64(chunk);
-            
-            const formData = {
-                fileName: fileName,
-                chunkIndex: i,
-                totalChunks: totalChunks,
-                fileData: chunkData
-            };
+          const start = i * this.chunkSize;
+          const end = Math.min(start + this.chunkSize, file.size);
+          const chunk = file.slice(start, end);
+          
+          const chunkData = await this.chunkToBase64(chunk);
+          
+          const formData = {
+            fileName: fileName,
+            chunkIndex: i,
+            totalChunks: totalChunks,
+            fileData: chunkData
+          };
 
-            log(`📤 Invio chunk ${i + 1}/${totalChunks}...`);
-            const response = await fetch('/api/chunk-upload', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(formData)
-            });
-            
-            log(`📊 Risposta chunk ${i + 1}: ${response.status}`);
-            
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Chunk ${i + 1} failed: ${response.status} - ${errorText}`);
-            }
-            
-            const result = await response.json();
-            uploadedSize += chunk.size;
-            const progress = Math.round((uploadedSize / file.size) * 100);
-            
-            this.updateLargeFileProgress(i + 1, totalChunks, progress, uploadedSize, file.size);
-            log(`✅ Chunk ${i + 1}/${totalChunks} uploadato (${progress}%)`);
-        } // ===== Test Endpoints - aggiungi dopo la classe ChunkUploader
-async function testEndpoints() {
-    log('🔍 Test endpoints in corso...');
-    
-    try {
-        // Test chunk-upload
-        const testResponse = await fetch('/api/chunk-upload', {
+          log(`📤 Invio chunk ${i + 1}/${totalChunks}...`);
+          const response = await fetch('/api/chunk-upload', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ test: true, message: "Test connection" })
-        });
-        log(`🔍 Chunk-upload endpoint: ${testResponse.status}`);
-        
-        // Test merge-chunks
-        const mergeTest = await fetch('/api/merge-chunks', {
-            method: 'POST', 
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ test: true, message: "Test connection" })
-        });
-        log(`🔍 Merge-chunks endpoint: ${mergeTest.status}`);
-        
-        log('✅ Test endpoints completato');
-    } catch (e) {
-        log('❌ Test endpoints fallito:', e.message);
-    }
-}
-
-// Chiama il test all'inizializzazione
-testEndpoints();
+            body: JSON.stringify(formData)
+          });
+          
+          log(`📊 Risposta chunk ${i + 1}: ${response.status}`);
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Chunk ${i + 1} failed: ${response.status} - ${errorText}`);
+          }
+          
+          const result = await response.json();
+          uploadedSize += chunk.size;
+          const progress = Math.round((uploadedSize / file.size) * 100);
+          
+          this.updateLargeFileProgress(i + 1, totalChunks, progress, uploadedSize, file.size);
+          log(`✅ Chunk ${i + 1}/${totalChunks} uploadato (${progress}%)`);
+        }
 
         // 2. UNISCI I CHUNK - CON DEBUG DETTAGLIATO
         log("🔗 Avvio unione chunk...");
         
         const mergeData = {
-            fileName: fileName,
-            totalChunks: totalChunks
+          fileName: fileName,
+          totalChunks: totalChunks
         };
         
         log(`📨 Dati merge: ${JSON.stringify(mergeData)}`);
         
         const mergeResponse = await fetch('/api/merge-chunks', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(mergeData)
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(mergeData)
         });
 
         log(`📊 Status merge: ${mergeResponse.status}`);
         log(`📊 Merge OK: ${mergeResponse.ok}`);
         
         if (!mergeResponse.ok) {
-            const errorText = await mergeResponse.text();
-            log(`❌ Testo errore merge: ${errorText}`);
-            throw new Error(`Merge failed: ${mergeResponse.status} - ${errorText}`);
+          const errorText = await mergeResponse.text();
+          log(`❌ Testo errore merge: ${errorText}`);
+          throw new Error(`Merge failed: ${mergeResponse.status} - ${errorText}`);
         }
 
         const result = await mergeResponse.json();
@@ -648,38 +620,10 @@ testEndpoints();
         
         return result;
         
-    } catch (error) {
+      } catch (error) {
         this.hideLargeFileProgress();
         log('❌ Errore COMPLETO uploadLargeFile:', error.message);
         log('❌ Stack trace:', error.stack);
-        throw error;
-    }
-}
-      // Unisci i chunk
-      log("🔗 Unione chunk...");
-      try {
-        const mergeResponse = await fetch('/api/merge-chunks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fileName: fileName,
-            totalChunks: totalChunks
-          })
-        });
-
-        if (!mergeResponse.ok) {
-          throw new Error(`Merge failed: ${mergeResponse.status}`);
-        }
-
-        const result = await mergeResponse.json();
-        this.hideLargeFileProgress();
-        log(`🎉 File ${fileName} assemblato con successo!`);
-        
-        return result;
-        
-      } catch (error) {
-        this.hideLargeFileProgress();
-        log('❌ Errore unione chunk:', error.message);
         throw error;
       }
     }
@@ -711,6 +655,33 @@ testEndpoints();
 
     hideLargeFileProgress() {
       $('#largeFileProgress').classList.add('hidden');
+    }
+  }
+
+  // ===== Test Endpoints
+  async function testEndpoints() {
+    log('🔍 Test endpoints in corso...');
+    
+    try {
+      // Test chunk-upload
+      const testResponse = await fetch('/api/chunk-upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ test: true, message: "Test connection" })
+      });
+      log(`🔍 Chunk-upload endpoint: ${testResponse.status}`);
+      
+      // Test merge-chunks
+      const mergeTest = await fetch('/api/merge-chunks', {
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ test: true, message: "Test connection" })
+      });
+      log(`🔍 Merge-chunks endpoint: ${mergeTest.status}`);
+      
+      log('✅ Test endpoints completato');
+    } catch (e) {
+      log('❌ Test endpoints fallito:', e.message);
     }
   }
 
@@ -858,66 +829,30 @@ testEndpoints();
           log(`✅ TXT/MD elaborato: ${name}`);
           continue;
         }
-// File audio grandi (> 50MB) usano chunk upload
-if (['mp3','m4a','wav','ogg','webm'].includes(ext) && file.size > 50 * 1024 * 1024) {
-    setQueueState(id,'uploading','upload chunk…',10);
-    
-    try {
-        const uploader = new ChunkUploader();
-        const result = await uploader.uploadLargeFile(file);
-        
-        setQueueState(id,'processing','trascrizione…',80);
-        const transcription = await transcribe(`uploaded://${name}`);
-        const text = transcription.text;
-        
-        setPreview(text, name, 'audio');
-        $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + text;
-        saveToLocal();
-        setQueueState(id,'done','completato',100);
-        log(`✅ Audio grande trascritto: ${name}`);
-        
-    } catch (error) {
-        setQueueState(id,'error', error.message, 100);
-        log(`❌ Errore elaborazione file grande ${name}:`, error.message);
-    }
-    continue;
-}
-}
-    
-    try {
-        const uploader = new ChunkUploader();
-        const result = await uploader.uploadLargeFile(file);
-        
-        setQueueState(id,'processing','trascrizione…',80);
-        const transcription = await transcribe(`uploaded://${name}`);
-        const text = transcription.text;
-        
-        setPreview(text, name, 'audio');
-        $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + text;
-        saveToLocal();
-        setQueueState(id,'done','completato',100);
-        log(`✅ Audio grande trascritto: ${name}`);
-        
-    } catch (error) {
-        setQueueState(id,'error', error.message, 100);
-        log(`❌ Errore elaborazione file grande ${name}:`, error.message);
-    }
-    continue;
-}
+
+        // File audio grandi (> 50MB) usano chunk upload
+        if (['mp3','m4a','wav','ogg','webm'].includes(ext) && file.size > 50 * 1024 * 1024) {
+          setQueueState(id,'uploading','upload chunk…',10);
           
-          const uploader = new ChunkUploader();
-          const result = await uploader.uploadLargeFile(file);
-          
-          // Dopo l'upload, procedi con la trascrizione
-          setQueueState(id,'processing','trascrizione…',80);
-          const transcription = await transcribe(`uploaded://${name}`);
-          const text = transcription.text;
-          
-          setPreview(text, name, 'audio');
-          $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + text;
-          saveToLocal();
-          setQueueState(id,'done','completato',100);
-          log(`✅ Audio grande trascritto: ${name}`);
+          try {
+            log(`🎯 Avvio upload LARGE per: ${name} (${fmtSize(file.size)})`);
+            const uploader = new ChunkUploader();
+            const result = await uploader.uploadLargeFile(file);
+            
+            setQueueState(id,'processing','trascrizione…',80);
+            const transcription = await transcribe(`uploaded://${name}`);
+            const text = transcription.text;
+            
+            setPreview(text, name, 'audio');
+            $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + text;
+            saveToLocal();
+            setQueueState(id,'done','completato',100);
+            log(`✅ Audio grande trascritto: ${name}`);
+            
+          } catch (error) {
+            setQueueState(id,'error', error.message, 100);
+            log(`❌ Errore elaborazione file grande ${name}:`, error.message);
+          }
           continue;
         }
 
@@ -1073,6 +1008,7 @@ if (['mp3','m4a','wav','ogg','webm'].includes(ext) && file.size > 50 * 1024 * 10
   // ... (mantieni tutto il resto del codice esistente per analisi AI, statistiche, template, generazione verbale, etc.)
 
   // ===== Inizializzazione
+  testEndpoints();
   log('🚀 Memo AI Advanced caricato! Supporto per file fino a 200MB attivo.');
 })();
 </script>
