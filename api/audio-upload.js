@@ -1,7 +1,6 @@
-// /api/audio-upload.js - VERSIONE CORRETTA
 import formidable from "formidable";
 import fs from "fs";
-import { OpenAI } from "openai";
+import { put } from '@vercel/blob';  // 👈 AGGIUNTO
 
 export const config = {
   api: {
@@ -24,7 +23,7 @@ export default async function handler(req, res) {
   try {
     const form = formidable({
       multiples: false,
-      maxFileSize: 200 * 1024 * 1024,  // 👈 ✅ CORRETTO: 200MB
+      maxFileSize: 200 * 1024 * 1024,
       keepExtensions: true
     });
 
@@ -49,19 +48,38 @@ export default async function handler(req, res) {
 
     console.log("✅ File ricevuto:", audioFile.originalFilename, "Dimensione:", audioFile.size);
 
-    // PRIMA FASE: Solo upload (senza OpenAI)
-    console.log("📦 Upload completato, ritorno successo...");
+    // 👇 **NUOVA PARTE: SALVATAGGIO SU VERCEL BLOB**
     
+    // Leggi il file temporaneo
+    const fileBuffer = fs.readFileSync(tempFilePath);
+    
+    // Crea nome file univoco
+    const timestamp = Date.now();
+    const fileExtension = audioFile.originalFilename.split('.').pop();
+    const blobFilename = `audio-${timestamp}.${fileExtension}`;
+    
+    console.log("📦 Salvando su Vercel Blob...", blobFilename);
+    
+    // Salva su Vercel Blob
+    const { url } = await put(blobFilename, fileBuffer, {
+      access: 'public',
+      addRandomSuffix: false  // Usiamo il nostro timestamp per unicità
+    });
+
+    console.log("✅ File salvato su Blob:", url);
+
+    // 👇 RISPOSTA AGGIORNATA
     return res.status(200).json({
       success: true,
-      message: "File audio ricevuto con successo!",
+      message: "File audio salvato con successo su cloud storage!",
       fileInfo: {
         name: audioFile.originalFilename,
         size: audioFile.size,
         type: audioFile.mimetype,
-        field: fileKeys[0]
+        blobUrl: url,  // 👈 NUOVO: URL permanente del file
+        blobFilename: blobFilename
       },
-      nextStep: "Trascrizione OpenAI da implementare"
+      nextStep: "Pronto per trascrizione OpenAI"
     });
 
   } catch (error) {
@@ -73,7 +91,7 @@ export default async function handler(req, res) {
     });
     
   } finally {
-    // Pulizia file temporaneo
+    // Pulizia file temporaneo (NECESSARIA ANCHE CON BLOB)
     if (tempFilePath && fs.existsSync(tempFilePath)) {
       try {
         fs.unlinkSync(tempFilePath);
