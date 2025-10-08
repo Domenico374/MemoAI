@@ -1,11 +1,19 @@
-// /api/audio-upload.js - VERSIONE CON DEBUG ESTESO
+// /api/audio-upload.js - VERSIONE COMPLETA CON TRASCRIZIONE
 import formidable from "formidable";
+import fs from "fs";
+import { OpenAI } from "openai";
 
 export const config = {
   api: {
     bodyParser: false
   }
 };
+
+// Helper function per convertire buffer in file OpenAI
+async function bufferToFile(buffer, filename) {
+  const blob = new Blob([buffer]);
+  return new File([blob], filename);
+}
 
 export default async function handler(req, res) {
   console.log("🚀🎯 Audio Upload Endpoint CHIAMATO!");
@@ -29,7 +37,6 @@ export default async function handler(req, res) {
   try {
     console.log("🔧 Configuro formidable...");
     
-    // Configurazione semplice di formidable
     const form = formidable({
       multiples: false,
       maxFileSize: 10 * 1024 * 1024, // 10MB
@@ -38,77 +45,128 @@ export default async function handler(req, res) {
 
     console.log("🔄 Inizio parsing form...");
     
-    // Parsing del form
     const [fields, files] = await new Promise((resolve, reject) => {
       form.parse(req, (err, fields, files) => {
         if (err) {
           console.error("❌ ERRORE Formidable:", err);
-          console.error("❌ Stack:", err.stack);
           reject(err);
         } else {
           console.log("✅ Formidable parsing COMPLETATO!");
           console.log("📁 Files keys:", Object.keys(files));
-          console.log("📋 Fields keys:", Object.keys(fields));
           resolve([fields, files]);
         }
       });
     });
 
-    console.log("🔍 Analizzo files ricevuti...");
-    
-    // DEBUG DETTAGLIATO
     const fileKeys = Object.keys(files);
     console.log("📊 Numero file ricevuti:", fileKeys.length);
     
     if (fileKeys.length === 0) {
-      console.log("❌ Nessun file trovato dopo il parsing");
       return res.status(400).json({ 
         success: false, 
         error: "Nessun file ricevuto" 
       });
     }
 
-    console.log("📄 Elaboro il primo file...");
     const firstFileKey = fileKeys[0];
     const fileArray = files[firstFileKey];
     const file = Array.isArray(fileArray) ? fileArray[0] : fileArray;
 
     console.log("✅ FILE TROVATO:", {
-      fieldName: firstFileKey,
       fileName: file.originalFilename,
       fileSize: file.size,
-      mimeType: file.mimetype,
-      tempPath: file.filepath
+      mimeType: file.mimetype
     });
 
-    // SUCCESSO!
-    console.log("🎉 UPLOAD SUCCESSO! Invio response...");
+    // 🔥 TRASCRIZIONE OPENAI
+    console.log("🎙️  Verifica OpenAI API Key...");
     
+    if (!process.env.OPENAI_API_KEY) {
+      console.log("⚠️  OpenAI API Key non configurata");
+      // Pulizia file temporaneo
+      if (fs.existsSync(file.filepath)) {
+        fs.unlinkSync(file.filepath);
+      }
+      
+      return res.status(200).json({
+        success: true,
+        message: "File ricevuto - Configura OPENAI_API_KEY per la trascrizione",
+        fileInfo: {
+          name: file.originalFilename,
+          size: file.size,
+          type: file.mimetype
+        },
+        transcription: null
+      });
+    }
+
+    console.log("🔑 OpenAI configurato, avvio trascrizione...");
+    
+    const openai = new OpenAI({ 
+      apiKey: process.env.OPENAI_API_KEY 
+    });
+
+    // Leggi il file temporaneo
+    const fileBuffer = fs.readFileSync(file.filepath);
+    console.log("📖 File letto, dimensione buffer:", fileBuffer.length);
+
+    // Crea file per OpenAI
+    const openaiFile = await bufferToFile(fileBuffer, file.originalFilename);
+    
+    console.log("🔮 Invio a Whisper...");
+    const transcription = await openai.audio.transcriptions.create({
+      file: openaiFile,
+      model: "whisper-1",
+      language: "it",
+      response_format: "text"
+    });
+
+    console.log("✅ Trascrizione completata!");
+    console.log("📝 Lunghezza testo:", transcription.text.length);
+
+    // Pulizia file temporaneo
+    if (fs.existsSync(file.filepath)) {
+      fs.unlinkSync(file.filepath);
+    }
+
+    // SUCCESSO COMPLETO!
     return res.status(200).json({
       success: true,
-      message: "File audio ricevuto con successo!",
+      message: "Trascrizione completata con successo!",
+      transcription: transcription.text,
       fileInfo: {
         name: file.originalFilename,
         size: file.size,
-        type: file.mimetype,
-        field: firstFileKey
+        type: file.mimetype
       },
-      debug: {
-        fileKeys: fileKeys,
-        receivedAt: new Date().toISOString()
+      stats: {
+        textLength: transcription.text.length,
+        words: transcription.text.split(/\s+/).length
       }
     });
 
   } catch (error) {
-    console.error("💥💥 ERRORE COMPLETO:");
+    console.error("💥 ERRORE COMPLETO:");
     console.error("💥 Messaggio:", error.message);
     console.error("💥 Stack:", error.stack);
-    console.error("💥 Nome:", error.name);
+    
+    // Pulizia file temporaneo in caso di errore
+    try {
+      if (files && Object.keys(files).length > 0) {
+        const firstFile = files[Object.keys(files)[0]];
+        const file = Array.isArray(firstFile) ? firstFile[0] : firstFile;
+        if (file && file.filepath && fs.existsSync(file.filepath)) {
+          fs.unlinkSync(file.filepath);
+        }
+      }
+    } catch (cleanupError) {
+      console.error("Errore pulizia:", cleanupError);
+    }
     
     return res.status(500).json({
       success: false,
-      error: "Errore server: " + (error.message || "Unknown"),
-      step: "check server logs"
+      error: "Errore: " + (error.message || "Unknown"),
+      step: "trascrizione"
     });
   }
 }
