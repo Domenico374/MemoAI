@@ -2,18 +2,20 @@
 <html lang="it">
 <head>
   <meta charset="utf-8" />
-  <title>Upload Test — Vercel Blob</title>
+  <title>Upload Test — Audio Upload</title>
   <style>
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial; padding: 20px; }
     pre { background:#f6f7f9; border:1px solid #e5e7eb; padding:12px; border-radius:8px; white-space:pre-wrap; }
     button, input[type=file] { padding:6px 10px; }
+    .success { color: green; }
+    .error { color: red; }
   </style>
 </head>
 <body>
-  <h1>Upload Test – Vercel Blob</h1>
+  <h1>Upload Test – Audio Upload</h1>
 
-  <input id="file" type="file" />
-  <button id="go">Carica</button>
+  <input id="file" type="file" accept="audio/*" />
+  <button id="go">Carica Audio</button>
 
   <h3>Risposta</h3>
   <pre id="out">—</pre>
@@ -22,50 +24,67 @@
     const $ = s => document.querySelector(s);
     const out = $('#out');
 
-    function log(...a){ out.textContent += a.join(' ') + '\n'; }
+    function log(...a){ 
+      out.textContent += a.join(' ') + '\n'; 
+      console.log(...a);
+    }
     function reset(){ out.textContent = ''; }
 
     $('#go').addEventListener('click', async () => {
       reset();
       const file = $('#file').files?.[0];
-      if (!file) return log('Seleziona un file.');
+      if (!file) return log('⛔ Seleziona un file audio.');
+      
+      // Verifica che sia un file audio
+      if (!file.type.startsWith('audio/')) {
+        return log('⛔ Il file selezionato non è un audio. Tipo:', file.type);
+      }
+
+      log('🎯 File selezionato:', file.name, `(${Math.round(file.size/1024)} KB)`);
+      log('🔍 Tipo file:', file.type);
 
       try {
-        // 1) POST diretto a /api/upload
-        log('1) POST /api/upload …');
+        // 1) POST a /api/audio-upload
+        log('\n1) 📤 Invio a /api/audio-upload …');
         const fd = new FormData();
-        fd.append('file', file, file.name);
-        fd.append('contentType', file.type || 'application/octet-stream');
-
-        const r = await fetch('/api/upload', { method: 'POST', body: fd });
+        fd.append('audio', file);  // 👈 NOME IMPORTANTE: 'audio'
+        
+        log('📦 FormData creato, invio in corso...');
+        
+        const startTime = Date.now();
+        const r = await fetch('/api/audio-upload', { 
+          method: 'POST', 
+          body: fd 
+        });
+        const endTime = Date.now();
+        
+        log(`⏱️  Tempo risposta: ${endTime - startTime}ms`);
+        log('📡 Status:', r.status, r.ok ? 'OK ✅' : 'ERROR ❌');
+        
         const j = await r.json().catch(() => ({}));
-        log('status:', r.status, r.ok ? 'OK' : 'ERROR');
-        log(JSON.stringify(j, null, 2));
+        log('📄 Risposta:', JSON.stringify(j, null, 2));
 
-        const url = j?.data?.url || j?.url;
-        if (!r.ok || !url) {
-          log('\n⛔ Upload non riuscito o URL mancante.');
+        if (!r.ok) {
+          log('\n⛔ Upload fallito:', j.error || 'Errore sconosciuto');
           return;
         }
 
-        // 2) (facoltativo) prova estrazione testo con /api/extract
-        log('\n2) POST /api/extract …');
-        const r2 = await fetch('/api/extract', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileUrl: url, fileName: file.name })
-        });
-        const j2 = await r2.json().catch(() => ({}));
-        log('status:', r2.status, r2.ok ? 'OK' : 'ERROR');
-        if (j2?.text) {
-          log('Estratto (prime 400c):\n' + j2.text.slice(0, 400) + (j2.text.length > 400 ? '…' : ''));
+        if (j.success) {
+          log('\n🎉 UPLOAD SUCCESSO!');
+          log('📁 File info:', JSON.stringify(j.fileInfo, null, 2));
         } else {
-          log(JSON.stringify(j2, null, 2));
+          log('\n⚠️  Upload completato ma con warning');
         }
+
       } catch (e) {
-        log('Eccezione:', e?.message || e);
+        log('\n💥 ECCEZIONE:', e?.message || e);
+        console.error('Errore completo:', e);
       }
     });
+
+    // Log iniziale
+    log('🚀 Test Audio Upload pronto');
+    log('👉 Seleziona un file audio e clicca "Carica Audio"');
   </script>
 </body>
 </html>
