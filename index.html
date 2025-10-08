@@ -622,7 +622,8 @@
       if (['pdf','docx','txt','md'].includes(ext)) {
         endpoint = '/api/extract';
       } else if (['mp3','m4a','wav','ogg','webm'].includes(ext)) {
-        endpoint = '/api/transcribe-audio';
+        // ✅ CORRETTO: usa il nuovo endpoint audio-upload
+        endpoint = '/api/audio-upload';
       } else {
         reject(new Error(`Formato non supportato: ${ext}`));
         return;
@@ -649,7 +650,12 @@
       xhr.onerror = () => reject(new Error('Errore di rete durante l\'upload'));
       
       const fd = new FormData();
-      fd.append('file', file);
+      // ✅ CORRETTO: usa 'audio' come nome campo per i file audio
+      if (['mp3','m4a','wav','ogg','webm'].includes(ext)) {
+        fd.append('audio', file);
+      } else {
+        fd.append('file', file);
+      }
       xhr.send(fd);
     });
   }
