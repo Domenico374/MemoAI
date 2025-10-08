@@ -955,55 +955,54 @@
     updateCharts();
   }
   
-  function updateCharts() {
-    // Distruggi chart esistenti prima di crearne di nuovi
-    if (window.participationChart) {
-      window.participationChart.destroy();
-    }
-    if (window.trendChart) {
-      window.trendChart.destroy();
-    }
-    
-    const participationCtx = $('#participationChart').getContext('2d');
-    window.participationChart = new Chart(participationCtx, {
-      type: 'doughnut',
-      data: {
-        labels: ['Mario R.', 'Laura B.', 'Giulia V.', 'Marco D.', 'Altri'],
-        datasets: [{
-          data: [30, 25, 20, 15, 10],
-          backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#6b7280']
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { position: 'bottom' }
-        }
-      }
-    });
-    
-    const trendCtx = $('#trendChart').getContext('2d');
-    window.trendChart = new Chart(trendCtx, {
-      type: 'line',
-      data: {
-        labels: ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu'],
-        datasets: [{
-          label: 'Riunioni',
-          data: [12, 19, 14, 16, 18, 22],
-          borderColor: '#3b82f6',
-          tension: 0.4,
-          fill: false
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { display: false }
-        }
-      }
-    });
+function updateCharts() {
+  // Distruggi chart esistenti prima di crearne di nuovi
+  if (window.participationChart && typeof window.participationChart.destroy === 'function') {
+    window.participationChart.destroy();
   }
-
+  if (window.trendChart && typeof window.trendChart.destroy === 'function') {
+    window.trendChart.destroy();
+  }
+  
+  const participationCtx = $('#participationChart').getContext('2d');
+  window.participationChart = new Chart(participationCtx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Mario R.', 'Laura B.', 'Giulia V.', 'Marco D.', 'Altri'],
+      datasets: [{
+        data: [30, 25, 20, 15, 10],
+        backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#6b7280']
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { position: 'bottom' }
+      }
+    }
+  });
+  
+  const trendCtx = $('#trendChart').getContext('2d');
+  window.trendChart = new Chart(trendCtx, {
+    type: 'line',
+    data: {
+      labels: ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu'],
+      datasets: [{
+        label: 'Riunioni',
+        data: [12, 19, 14, 16, 18, 22],
+        borderColor: '#3b82f6',
+        tension: 0.4,
+        fill: false
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false }
+      }
+    }
+  });
+}
   // ===== Salvataggio locale
   function saveToLocal(){
     const data = {
