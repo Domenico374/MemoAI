@@ -537,37 +537,50 @@
   function fmtSize(b){ if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(1)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
 
   // ===== Chunk Uploader per file grandi
-  class ChunkUploader {
+class ChunkUploader {
     constructor() {
-      this.chunkSize = 4 * 1024 * 1024; // 4MB per chunk (compatibile con Vercel)
+        this.chunkSize = 4 * 1024 * 1024; // 4MB per chunk (compatibile con Vercel)
     }
 
     async uploadLargeFile(file) {
-      const totalChunks = Math.ceil(file.size / this.chunkSize);
-      const fileName = file.name;
-      
-      log(`📦 Dividendo file ${fileName} in ${totalChunks} chunk...`);
-      
-      // Mostra progress bar per file grandi
-      this.showLargeFileProgress(fileName, file.size, totalChunks);
-      
-      let uploadedSize = 0;
-      
-      for (let i = 0; i < totalChunks; i++) {
-        const start = i * this.chunkSize;
-        const end = Math.min(start + this.chunkSize, file.size);
-        const chunk = file.slice(start, end);
+        const totalChunks = Math.ceil(file.size / this.chunkSize);
+        const fileName = file.name;
         
-        // Converti chunk in base64
-        const chunkData = await this.chunkToBase64(chunk);
+        log(`📦 Dividendo file ${fileName} in ${totalChunks} chunk...`);
         
-        const formData = {
-          fileName: fileName,
-          chunkIndex: i,
-          totalChunks: totalChunks,
-          fileData: chunkData
-        };
+        // Mostra progress bar per file grandi
+        this.showLargeFileProgress(fileName, file.size, totalChunks);
+        
+        let uploadedSize = 0;
+        
+        for (let i = 0; i < totalChunks; i++) {
+            // ... codice esistente ...
+        }
 
+        // Unisci i chunk
+        log("🔗 Unione chunk...");
+        try {
+            const mergeResponse = await fetch('/api/merge-chunks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fileName: fileName,
+                    totalChunks: totalChunks
+                })
+            });
+
+            const result = await mergeResponse.json();
+            this.hideLargeFileProgress();
+            log(`🎉 File ${fileName} assemblato con successo!`);
+            
+            return result;
+            
+        } catch (error) {
+            this.hideLargeFileProgress();
+            log('❌ Errore unione chunk:', error.message);
+            throw error;
+        }
+    }
         try {
           const response = await fetch('/api/chunk-upload', {
             method: 'POST',
