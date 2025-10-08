@@ -858,10 +858,52 @@ testEndpoints();
           log(`✅ TXT/MD elaborato: ${name}`);
           continue;
         }
-
-        // File audio grandi (> 50MB) usano chunk upload
-        if (['mp3','m4a','wav','ogg','webm'].includes(ext) && file.size > 50 * 1024 * 1024) {
-          setQueueState(id,'uploading','upload chunk…',10);
+// File audio grandi (> 50MB) usano chunk upload
+if (['mp3','m4a','wav','ogg','webm'].includes(ext) && file.size > 50 * 1024 * 1024) {
+    setQueueState(id,'uploading','upload chunk…',10);
+    
+    try {
+        const uploader = new ChunkUploader();
+        const result = await uploader.uploadLargeFile(file);
+        
+        setQueueState(id,'processing','trascrizione…',80);
+        const transcription = await transcribe(`uploaded://${name}`);
+        const text = transcription.text;
+        
+        setPreview(text, name, 'audio');
+        $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + text;
+        saveToLocal();
+        setQueueState(id,'done','completato',100);
+        log(`✅ Audio grande trascritto: ${name}`);
+        
+    } catch (error) {
+        setQueueState(id,'error', error.message, 100);
+        log(`❌ Errore elaborazione file grande ${name}:`, error.message);
+    }
+    continue;
+}
+}
+    
+    try {
+        const uploader = new ChunkUploader();
+        const result = await uploader.uploadLargeFile(file);
+        
+        setQueueState(id,'processing','trascrizione…',80);
+        const transcription = await transcribe(`uploaded://${name}`);
+        const text = transcription.text;
+        
+        setPreview(text, name, 'audio');
+        $('#notes').value = ($('#notes').value ? $('#notes').value + '\n---\n' : '') + text;
+        saveToLocal();
+        setQueueState(id,'done','completato',100);
+        log(`✅ Audio grande trascritto: ${name}`);
+        
+    } catch (error) {
+        setQueueState(id,'error', error.message, 100);
+        log(`❌ Errore elaborazione file grande ${name}:`, error.message);
+    }
+    continue;
+}
           
           const uploader = new ChunkUploader();
           const result = await uploader.uploadLargeFile(file);
