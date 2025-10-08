@@ -587,7 +587,35 @@ class ChunkUploader {
             
             this.updateLargeFileProgress(i + 1, totalChunks, progress, uploadedSize, file.size);
             log(`✅ Chunk ${i + 1}/${totalChunks} uploadato (${progress}%)`);
-        }
+        } // ===== Test Endpoints - aggiungi dopo la classe ChunkUploader
+async function testEndpoints() {
+    log('🔍 Test endpoints in corso...');
+    
+    try {
+        // Test chunk-upload
+        const testResponse = await fetch('/api/chunk-upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ test: true, message: "Test connection" })
+        });
+        log(`🔍 Chunk-upload endpoint: ${testResponse.status}`);
+        
+        // Test merge-chunks
+        const mergeTest = await fetch('/api/merge-chunks', {
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ test: true, message: "Test connection" })
+        });
+        log(`🔍 Merge-chunks endpoint: ${mergeTest.status}`);
+        
+        log('✅ Test endpoints completato');
+    } catch (e) {
+        log('❌ Test endpoints fallito:', e.message);
+    }
+}
+
+// Chiama il test all'inizializzazione
+testEndpoints();
 
         // 2. UNISCI I CHUNK - CON DEBUG DETTAGLIATO
         log("🔗 Avvio unione chunk...");
