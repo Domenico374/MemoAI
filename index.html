@@ -956,8 +956,16 @@
   }
   
   function updateCharts() {
+    // Distruggi chart esistenti prima di crearne di nuovi
+    if (window.participationChart) {
+      window.participationChart.destroy();
+    }
+    if (window.trendChart) {
+      window.trendChart.destroy();
+    }
+    
     const participationCtx = $('#participationChart').getContext('2d');
-    new Chart(participationCtx, {
+    window.participationChart = new Chart(participationCtx, {
       type: 'doughnut',
       data: {
         labels: ['Mario R.', 'Laura B.', 'Giulia V.', 'Marco D.', 'Altri'],
@@ -975,7 +983,7 @@
     });
     
     const trendCtx = $('#trendChart').getContext('2d');
-    new Chart(trendCtx, {
+    window.trendChart = new Chart(trendCtx, {
       type: 'line',
       data: {
         labels: ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu'],
