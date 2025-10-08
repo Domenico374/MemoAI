@@ -1,12 +1,18 @@
 import formidable from "formidable";
 import fs from "fs";
-import { put } from '@vercel/blob';  // 👈 AGGIUNTO
+import { put } from '@vercel/blob';
+import { OpenAI } from "openai";
 
 export const config = {
   api: {
     bodyParser: false
   }
 };
+
+// ✅ CONTROLLO MIGLIORATO DELLA API KEY
+const openai = process.env.OPENAI_API_KEY 
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
 
 export default async function handler(req, res) {
   console.log("🚀 Audio Upload Endpoint CHIAMATO!");
@@ -17,6 +23,15 @@ export default async function handler(req, res) {
   
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Solo POST permesso" });
+
+  // ✅ CONTROLLO INIZIALE CRITICO
+  if (!openai) {
+    console.error("❌ OPENAI_API_KEY non configurata");
+    return res.status(500).json({
+      success: false,
+      error: "Configurazione API Key mancante"
+    });
+  }
 
   let tempFilePath = null;
 
@@ -46,44 +61,45 @@ export default async function handler(req, res) {
     const audioFile = Array.isArray(file) ? file[0] : file;
     tempFilePath = audioFile.filepath;
 
-    console.log("✅ File ricevuto:", audioFile.originalFilename, "Dimensione:", audioFile.size);
+    console.log("✅ File ricevuto:", audioFile.originalFilename);
 
-    // 👇 **NUOVA PARTE: SALVATAGGIO SU VERCEL BLOB**
-    
-    // Leggi il file temporaneo
+    // 🎯 PRIMA SALVA SU BLOB (SENZA OPENAI - TEST)
     const fileBuffer = fs.readFileSync(tempFilePath);
-    
-    // Crea nome file univoco
     const timestamp = Date.now();
     const fileExtension = audioFile.originalFilename.split('.').pop();
     const blobFilename = `audio-${timestamp}.${fileExtension}`;
     
-    console.log("📦 Salvando su Vercel Blob...", blobFilename);
+    console.log("📦 Salvando su Vercel Blob...");
     
-    // Salva su Vercel Blob
-    const { url } = await put(blobFilename, fileBuffer, {
-      access: 'public',
-      addRandomSuffix: false  // Usiamo il nostro timestamp per unicità
-    });
+    try {
+      const { url } = await put(blobFilename, fileBuffer, {
+        access: 'public',
+        addRandomSuffix: false
+      });
 
-    console.log("✅ File salvato su Blob:", url);
+      console.log("✅ File salvato su Blob:", url);
 
-    // 👇 RISPOSTA AGGIORNATA
-    return res.status(200).json({
-      success: true,
-      message: "File audio salvato con successo su cloud storage!",
-      fileInfo: {
-        name: audioFile.originalFilename,
-        size: audioFile.size,
-        type: audioFile.mimetype,
-        blobUrl: url,  // 👈 NUOVO: URL permanente del file
-        blobFilename: blobFilename
-      },
-      nextStep: "Pronto per trascrizione OpenAI"
-    });
+      // ✅ RITONA SUCCESSO SOLO CON BLOB (PER TEST)
+      return res.status(200).json({
+        success: true,
+        message: "File audio salvato su cloud storage!",
+        fileInfo: {
+          audioUrl: url,
+          blobFilename: blobFilename
+        },
+        nextStep: "Trascrizione da implementare"
+      });
+
+    } catch (blobError) {
+      console.error("❌ Errore Blob:", blobError);
+      return res.status(403).json({
+        success: false,
+        error: "Errore autorizzazione Blob Storage: " + blobError.message
+      });
+    }
 
   } catch (error) {
-    console.error("💥 ERRORE:", error.message);
+    console.error("💥 ERRORE GENERICO:", error.message);
     
     return res.status(500).json({
       success: false,
@@ -91,7 +107,6 @@ export default async function handler(req, res) {
     });
     
   } finally {
-    // Pulizia file temporaneo (NECESSARIA ANCHE CON BLOB)
     if (tempFilePath && fs.existsSync(tempFilePath)) {
       try {
         fs.unlinkSync(tempFilePath);
