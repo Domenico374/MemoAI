@@ -22,24 +22,33 @@
   <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
 
   <style>
-    body { background:#f5f7fb }
-    #log { white-space:pre-wrap; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace }
-    
-    /* Drag & Drop Styles */
-    .drop-zone {
-      border: 2px dashed #cbd5e1;
-      border-radius: 0.75rem;
-      transition: all 0.3s ease;
-      background: #f8fafc;
-    }
-    .drop-zone.dragover {
-      border-color: #3b82f6;
-      background: #eff6ff;
-      transform: scale(1.02);
-    }
-    .drop-zone.dragover .drop-text {
-      color: #3b82f6;
-    }
+    body {
+  background: linear-gradient(135deg, #f6f8fb 0%, #e3e6ef 100%);
+}
+
+#log {
+  white-space: pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* Drag & Drop Styles */
+.drop-zone {
+  border: 2px dashed #62DABF;          /* verde acqua, accent moderno */
+  border-radius: 0.75rem;
+  transition: all 0.3s ease;
+  background: #f6f8fb;                  /* azzurro pallido */
+}
+
+.drop-zone.dragover {
+  border-color: #8D5DFF;                /* viola accent */
+  background: #e3e6ef;                  /* sfondo chiaro leggermente diverso */
+  transform: scale(1.02);
+}
+
+.drop-zone.dragover .drop-text {
+  color: #8D5DFF;                       /* testo accent */
+}
+
     
     /* Progress Bar per file grandi */
     .large-file-progress {
