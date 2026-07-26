@@ -1399,41 +1399,27 @@ function updateCharts() {
     try {
       const payload = {
         notes,
-        meetingDate: $('#meetingDate').value,
-        participants: $('#participants').value,
-        subject: $('#subject').value,
-        project: $('#project').value,
-        formatoVerbale: $('#template')?.value || 'standard'
+        metadati: {
+          data: $('#meetingDate').value,
+          partecipanti: $('#participants').value,
+          oggetto: $('#subject').value,
+          progetto: $('#project').value,
+          formato: $('#template')?.value || 'standard'
+        }
       };
       log('➡ Generazione verbale...');
 
-      // Simula generazione verbale
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      const verbale = `
-# VERBALE RIUNIONE
-
-**Data:** ${$('#meetingDate').value || 'Da definire'}
-**Oggetto:** ${$('#subject').value || 'Non specificato'}
-**Partecipanti:** ${$('#participants').value || 'Non specificati'}
-**Progetto:** ${$('#project').value || 'Non specificato'}
-
-## RIEPILOGO
-${notes.slice(0, 200)}...
-
-## DISCUSSIONE
-${notes}
-
-## DECISIONI PRESE
-- Decisione 1: Approvato il piano di progetto
-- Decisione 2: Assegnati i compiti ai partecipanti
-
-## PROSSIMI PASSI
-- Task 1: Completare documentazione entro venerdì
-- Task 2: Revisione risultati la prossima settimana
-
-**Verbale generato automaticamente con Memo AI**
-      `.trim();
+      const resp = await fetch('/api/verbale', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(()=>({}));
+        throw new Error(err.message || `Errore ${resp.status}`);
+      }
+      const data = await resp.json();
+      const verbale = data.verbale || 'Nessun verbale generato';
 
       $('#result').value = verbale;
       saveToLocal();
